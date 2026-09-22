@@ -1,0 +1,8 @@
+# Changes to the proof, its specification, its guards, or the verifier itself
+# need a second reviewer: a weakened lemma or a narrowed precondition passes CI
+# silently (see PROOF.md, "Checking that the proofs have teeth").
+/src/            @kladkogex
+/test/proof/     @kladkogex
+/scripts/        @kladkogex
+/.github/        @kladkogex
+/PROOF.md        @kladkogex

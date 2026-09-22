@@ -1,0 +1,13 @@
+{
+  "check_chain": 20,
+  "check_randHash": 3,
+  "check_wotsDigits": 150,
+  "check_ltree": 1,
+  "check_climbStep": 8,
+  "check_treeIndexInvariant": 3,
+  "check_hMsg": 1,
+  "check_verifyRejectsOutOfDomain": 38,
+  "check_verifyBindsHeight": 13,
+  "check_rootFromSig_h2": 7,
+  "check_scratchBufferIsStateless": 1
+}

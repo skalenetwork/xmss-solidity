@@ -175,17 +175,23 @@ library RFC8391 {
 
     /// One iteration k of Algorithm 13's loop, verbatim (ADRS of type 2; on entry
     /// the tree index holds what the previous iteration left there).
+    /// The tree-index update of Algorithm 13's iteration k, on its own (so a proof
+    /// can check it without hashing): what rootStep leaves in getTreeIndex().
+    function treeIndexAfter(uint256 idx_sig, uint256 k, uint32 before) internal pure returns (uint32) {
+        if ((idx_sig / (2 ** k)) % 2 == 0) return before / 2;
+        return (before - 1) / 2;
+    }
+
     function rootStep(bytes32 node0, bytes32 authK, uint256 idx_sig, uint256 k, bytes32 SEED, ADRS memory a)
         internal
         pure
         returns (bytes32 node1)
     {
         setTreeHeight(a, uint32(k));
+        setTreeIndex(a, treeIndexAfter(idx_sig, k, a.word[6]));
         if ((idx_sig / (2 ** k)) % 2 == 0) {
-            setTreeIndex(a, a.word[6] / 2);
             node1 = RAND_HASH(node0, authK, SEED, a);
         } else {
-            setTreeIndex(a, (a.word[6] - 1) / 2);
             node1 = RAND_HASH(authK, node0, SEED, a);
         }
     }

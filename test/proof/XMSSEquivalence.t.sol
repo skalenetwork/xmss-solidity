@@ -106,9 +106,8 @@ contract XMSSEquivalence is Test {
     /// invariant holds for every k < h.
     function check_treeIndexInvariant(uint32 idx, uint8 k) public pure {
         vm.assume(k < 20);
-        uint32 t = uint32(uint256(idx) >> k);
-        uint32 next = ((idx / (2 ** uint256(k))) % 2 == 0) ? t / 2 : (t - 1) / 2;
-        assert(next == uint32(uint256(idx) >> (k + 1)));
+        uint32 before = uint32(uint256(idx) >> k);
+        assert(RFC8391.treeIndexAfter(idx, k, before) == uint32(uint256(idx) >> (k + 1)));
     }
 
     // ── Lemma 7: hMsg == H_msg (Algorithm 14, §5.1) ──────────────────────────────
@@ -162,12 +161,39 @@ contract XMSSEquivalence is Test {
         }
     }
 
+    // ── Lemma 10: the shared hash buffer carries no state between calls ────
+
+    /// Every prf/F/H call reuses one 160-byte scratch buffer. Each call must write
+    /// its whole input before hashing; if any input byte were left over from a
+    /// previous call, the result would depend on what the buffer held before. Here
+    /// the buffer starts filled with arbitrary symbolic words (worse than anything a
+    /// previous call could leave), and every primitive must still equal the same
+    /// call on a zeroed buffer, for all inputs.
+    function check_scratchBufferIsStateless(bytes32 a, bytes32 b, bytes32 c, bytes32 d, bytes32 e, bytes32 x, bytes32 y, bytes32 SEED, uint32 w4, uint32 w5)
+        public
+        view
+    {
+        uint256 fresh = _scratch();
+        uint256 dirty = _scratch();
+        assembly ("memory-safe") {
+            mstore(dirty, a)
+            mstore(add(dirty, 32), b)
+            mstore(add(dirty, 64), c)
+            mstore(add(dirty, 96), d)
+            mstore(add(dirty, 128), e)
+        }
+        bytes32 adr = XMSS.adrs(2, w4, w5, 0, 0);
+        assertEq(XMSS.randHash(x, y, SEED, adr, dirty), XMSS.randHash(x, y, SEED, adr, fresh));
+        assertEq(XMSS.chain(x, w4, w5, 0, 2, SEED, dirty), XMSS.chain(x, w4, w5, 0, 2, SEED, fresh));
+    }
+
     // ── Composition, checked symbolically at small height ──────────────────
 
     /// rootFromSig composes wotsPkFromSig, ltree and climbStep exactly as
     /// Algorithm 13 composes WOTS_pkFromSig, ltree and its loop: checked for all
-    /// WOTS signatures, auth paths, SEEDs and indices at h = 2, for a fixed M'
-    /// (M' fixes the 67 chain lengths; which lengths occur is covered by Lemmas 1, 3).
+    /// WOTS signatures, auth paths, SEEDs and indices at h = 2, for a fixed M'.
+    /// M' fixes the 67 chain lengths; that every length is handled identically is
+    /// Lemmas 1 and 3. (With a symbolic M' the solver did not finish in 40 minutes.)
     function check_rootFromSig_h2(bytes32[67] memory wotsSig, bytes32 a0, bytes32 a1, bytes32 SEED, uint8 idx)
         public
         view

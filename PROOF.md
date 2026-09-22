@@ -15,10 +15,11 @@
 | 5 | `climbStep` | one iteration of Algorithm 13's loop | every node, sibling, SEED, idx, and level k < 20 |
 | 6 | (spec only) | Algorithm 13's tree-index update keeps floor(idx / 2^k) | every idx, k < 20 |
 | 7 | `hMsg` | H_msg in Algorithm 14 (§4.1.10), §5.1 | every r, root, idx, M |
+| 10 | shared scratch buffer | (memory safety, not an RFC algorithm) | every primitive gives the same result on a buffer full of arbitrary bytes as on a zeroed one: no call reads what a previous call left |
 | 8 | `verify`'s input checks | domain of the parameter sets | returns false for every input with zero root or SEED, h = 0 or h > 20, or idx ≥ 2^h |
 | 9 | `verify(…, treeHeight)` | the key's parameter set fixes h (§4.1.7, §5.3) | returns false whenever the signature does not carry exactly `treeHeight` authentication nodes |
 
-**Composition.** `rootFromSig` is `wotsPkFromSig` (`chain` over the 67 digits from `wotsDigit`), then `ltree`, then `climbStep` for k = 0 … h−1, and `verify` compares its result with the root after `hMsg`. Algorithm 13 and Algorithm 14 have the same structure, so Lemmas 1–7 give the equality for every h by induction over the loop, with Lemma 6 as the loop invariant. This composition argument is checked by hand and, for all signatures, auth paths, SEEDs and indices at h = 2, symbolically (`check_rootFromSig_h2`). It is not machine-checked for general h.
+**Composition.** `rootFromSig` is `wotsPkFromSig` (`chain` over the 67 digits from `wotsDigit`), then `ltree`, then `climbStep` for k = 0 … h−1, and `verify` compares its result with the root after `hMsg`. Algorithm 13 and Algorithm 14 have the same structure, so Lemmas 1–7 give the equality for every h by induction over the loop, with Lemma 6 as the loop invariant. This composition argument is checked by hand and, for all signatures, auth paths, SEEDs and indices at h = 2 with one fixed M', symbolically (`check_rootFromSig_h2`; with a symbolic M' the solver did not finish within 40 minutes). It is not machine-checked for general h.
 
 ## Tree height and the public key
 
@@ -32,7 +33,7 @@ Accepting a signature under a height other than the key's would need a collision
 ## Assumptions and trust base
 
 - **SHA-256 is modelled as an uninterpreted function.** The proofs hold for any hash function in that position, so they say nothing about SHA-256 itself; the security of XMSS rests on the published security proofs for XMSS and on SHA-256.
-- **The specification is a human transcription of the RFC.** It is checked in three ways. It follows the RFC pseudocode literally. It accepts every signature produced by an independent Python implementation of RFC 8391 (`py/xmss_ref.py`, written for this project; not the RFC authors' C reference implementation, against which it has not yet been cross-checked) at h = 4, 10 and 20, and rejects each one for a different message (`test_spec_referenceVectors_*`). And every verified RFC 8391 erratum (as of 2026-09) was reviewed against it; none changes what verification computes:
+- **The specification is a human transcription of the RFC.** It is checked in four ways. The test vectors it must accept are also accepted, and their tampered copies rejected, by the RFC authors' own C implementation (github.com/XMSS/xmss-reference; `scripts/crosscheck_reference.sh`, run in CI), which this project did not write. It follows the RFC pseudocode literally. It accepts every signature produced by an independent Python implementation of RFC 8391 (`py/xmss_ref.py`, written for this project; not the RFC authors' C reference implementation, against which it has not yet been cross-checked) at h = 4, 10 and 20, and rejects each one for a different message (`test_spec_referenceVectors_*`). And every verified RFC 8391 erratum (as of 2026-09) was reviewed against it; none changes what verification computes:
   - 5572, 5573, 8382, 8383 and 8396 correct argument orders and a key-generation return value;
   - 7412 replaces `bits += 8` with `bits = 8` in base_w, identical since `bits` is 0 there;
   - 6821 corrects the documented checksum bound (the code relies on the correct bound, ≤ 960);
@@ -42,7 +43,7 @@ Accepting a signature under a height other than the key's would need a collision
 
 ## Proof run
 
-Halmos 0.3.3 (Z3), solc 0.8.37 via-IR, for release v0.1.0. All 9 checks pass; CI re-runs them on every push.
+Halmos 0.3.3 (Z3), solc 0.8.37 via-IR, for release v0.1.0. All 11 checks pass; CI re-runs them on every push and rejects a run that is truncated, near-vacuous, or carries solver warnings (`scripts/check_proof_run.py`).
 
 | Check | Paths | Time |
 |---|---|---|
@@ -58,7 +59,13 @@ Halmos 0.3.3 (Z3), solc 0.8.37 via-IR, for release v0.1.0. All 9 checks pass; CI
 
 ## Checking that the proofs have teeth
 
-Each check was also run against deliberately broken copies of `src/XMSS.sol`: swapped bitmasks in `randHash`, a wrong key/mask word in `chain`, an off-by-one hash address, a missing L-tree height increment, a dropped odd L-tree node, a wrong domain byte in F, and misplaced address words. Halmos returned a counterexample for every one.
+A proof of "production equals specification" is only as good as the specification, and a check with too strong a precondition can pass on no inputs at all. Three experiments guard against both.
+
+**Bugs planted in production.** Each check was run against deliberately broken copies of `src/XMSS.sol`: swapped bitmasks in `randHash`, a wrong key/mask word in `chain`, an off-by-one hash address, a missing L-tree height increment, a dropped odd L-tree node, a wrong domain byte in F, and misplaced address words. Halmos returned a counterexample for every one.
+
+**Bugs planted in the specification.** The same was done to `RFC8391.sol`, which the production-side experiment cannot cover: swapped bitmasks in RAND_HASH, a wrong hash address in chain, base_w reading nibbles in the wrong order, an unshifted checksum, a dropped odd L-tree node, H_msg without the index, wrong domain bytes for PRF and for F/H, and an inverted left/right decision in the tree climb. Every one produced a Halmos counterexample *and* failed the vector tests, so the specification is pinned from both sides. Two further mutations survived, and both are provably no-ops rather than blind spots: replacing `(t − 1) / 2` by `t / 2` in the right-child index update (t is odd on that branch, so the values are equal; this is exactly Lemma 6), and `setType` not zeroing the keyAndMask word (every consumer sets that word explicitly before each PRF call, so the stale value is never read).
+
+**Vacuity.** With each lemma's assertion replaced by `assert(false)`, Halmos reports a failure on 20 (`check_chain`), 77 (`check_verifyRejectsOutOfDomain`) and 189 (`check_wotsDigits`) paths, so the `vm.assume` preconditions leave real inputs to explore. The path counts Halmos prints for every check (in CI and above) are the same evidence for the others.
 
 ## Running
 

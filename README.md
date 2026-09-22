@@ -22,6 +22,24 @@ bool ok = XMSS.verify(messageDigest, signature, XMSS.PublicKey(root, seed));
 | **Footprint** | one `internal` library: no deployment, no storage, no dependencies |
 | **Licence** | MIT |
 
+## Try it in 60 seconds
+
+Verify real post-quantum signatures (h = 20, the largest standardized tree: over a million signatures per key) on the EVM, with [Foundry](https://getfoundry.sh):
+
+```sh
+git clone --recursive https://github.com/skalenetwork/xmss-solidity
+cd xmss-solidity
+forge test --match-test "test_gas_verify_h20|test_verify_h20_allVectors" -vv
+```
+
+```
+[PASS] test_gas_verify_h20()
+  XMSS verify gas (h=20, measured): 744906
+[PASS] test_verify_h20_allVectors()
+```
+
+The signatures come from an independent Python implementation of RFC 8391 (`py/xmss_ref.py`); Solidity checks them on-chain.
+
 ## Why you can trust it
 
 Most signature code is trusted because it passed its tests. This library is also **proven**:

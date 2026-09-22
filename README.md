@@ -19,11 +19,59 @@ XMSS is a one-time-signature scheme under a Merkle tree. Each leaf index may sig
 
 ## Install
 
+### Foundry (recommended)
+
 ```sh
-forge install skalenetwork/xmss-solidity
+forge install skalenetwork/xmss-solidity@v0.1.0
 ```
 
-Add the remapping `xmss-solidity/=lib/xmss-solidity/src/`.
+Add the remapping to `remappings.txt` (or `foundry.toml`):
+
+```
+xmss-solidity/=lib/xmss-solidity/src/
+```
+
+### Git submodule (without `forge install`)
+
+```sh
+git submodule add https://github.com/skalenetwork/xmss-solidity lib/xmss-solidity
+cd lib/xmss-solidity && git checkout v0.1.0 && cd -
+```
+
+Then add the same remapping as above.
+
+### Hardhat or other npm-based setups
+
+```sh
+npm install github:skalenetwork/xmss-solidity#v0.1.0
+```
+
+```solidity
+import {XMSS} from "xmss-solidity/src/XMSS.sol";
+```
+
+### Compiler settings
+
+The library needs Solidity ^0.8.24 and no other dependencies. The formal proof covers the bytecode produced with **solc 0.8.37, via-IR, 200 optimizer runs** (see `foundry.toml`). Other compiler versions or settings compile the same source, but not the exact bytecode that was proven, so use these settings if you rely on the proof.
+
+## Use
+
+```solidity
+import {XMSS} from "xmss-solidity/XMSS.sol";
+
+contract MyVerifier {
+    mapping(bytes32 => mapping(uint32 => bool)) public leafUsed; // per key: one-time leaves
+
+    function check(bytes32 digest, XMSS.Signature memory sig, bytes32 root, bytes32 seed) external {
+        bytes32 key = keccak256(abi.encode(root, seed));
+        require(!leafUsed[key][sig.leafIdx], "leaf already used");
+        require(XMSS.verify(digest, sig, XMSS.PublicKey(root, seed)), "invalid XMSS signature");
+        leafUsed[key][sig.leafIdx] = true; // XMSS is stateful: never accept a leaf twice
+    }
+}
+```
+
+`XMSS.Signature` is `{uint32 leafIdx; bytes32 r; bytes32[67] wotsSig; bytes32[] authPath}`; the tree height is the length of `authPath`. `py/xmss_ref.py` generates keys and signatures in this format for testing.
 
 ## Layout
 

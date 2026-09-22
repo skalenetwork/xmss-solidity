@@ -1,0 +1,12 @@
+{
+  "name": "xmss-solidity",
+  "version": "0.1.0",
+  "description": "XMSS (RFC 8391) post-quantum signature verification in Solidity, formally verified against the RFC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skalenetwork/xmss-solidity.git"
+  },
+  "keywords": ["xmss", "rfc8391", "post-quantum", "solidity", "formal-verification"],
+  "files": ["src/", "README.md", "PROOF.md", "LICENSE"]
+}

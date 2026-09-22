@@ -63,7 +63,7 @@ Every arrow is SHA-256 and nothing else: roughly 1,900 to 3,400 precompile calls
 
 Most signature code is trusted because it passed its tests. This library is also **proven**:
 
-- **An executable copy of the RFC.** [`test/proof/RFC8391.sol`](test/proof/RFC8391.sol) transcribes RFC 8391's verification algorithms line by line, citing each section. It accepts every signature from the RFC's reference implementation (h = 4, 10 and 20) and rejects each one for a different message.
+- **An executable copy of the RFC.** [`test/proof/RFC8391.sol`](test/proof/RFC8391.sol) transcribes RFC 8391's verification algorithms line by line, citing each section. It accepts every signature produced by an independent Python implementation of RFC 8391 (`py/xmss_ref.py`, written for this project, not the RFC authors' C reference) at h = 4, 10 and 20, and rejects each one for a different message.
 - **Proven equal, for all inputs.** Halmos proves each building block of the production verifier equal to the RFC's algorithm for every input: the hash chain, RAND_HASH, the WOTS+ digits and checksum, the L-tree, each tree level, H_msg and the input checks. Deliberately planted bugs are all caught.
 - **Stated assumptions.** SHA-256 is modelled as an abstract function, the proof covers one compiler configuration, and the composition for general tree heights rests on a written induction argument. [PROOF.md](PROOF.md) spells out every assumption.
 
@@ -202,8 +202,8 @@ The XMSS signature of RFC 8391 §4.1.8: 4 + 32 × (68 + h) bytes, e.g. 2,820 byt
 | `test/proof/RFC8391.sol` | executable specification: RFC 8391's verification algorithms, transcribed line by line |
 | `test/proof/XMSSEquivalence.t.sol` | the Halmos proofs, and the specification checked against the reference vectors |
 | `test/XMSS.t.sol`, `test/XMSSProperties.t.sol` | unit, gas and fuzz tests |
-| `test/vectors/` | signatures from the Python reference implementation, h = 4, 10 and 20 |
-| `py/xmss_ref.py` | independent Python reference implementation (key generation, signing, verification); regenerates the h = 4 and 10 vectors |
+| `test/vectors/` | signatures from the independent Python implementation, h = 4, 10 and 20 |
+| `py/xmss_ref.py` | independent Python implementation of RFC 8391 (key generation, signing, verification), written for this project; regenerates the h = 4 and 10 vectors |
 | `py/gen_h20.py` | regenerates the h = 20 vectors (about 10 minutes on all cores) |
 | `py/sign_digest.py` | test helper: signs a digest with a deterministic test key, for Foundry FFI |
 

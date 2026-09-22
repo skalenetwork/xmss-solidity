@@ -216,7 +216,7 @@ library RFC8391 {
     /// Algorithm 14 for the parameter set XMSS-SHA2_h_256. The public key's OID fixes
     /// h (§4.1.7, §5.3). A signature for that set holds exactly h authentication nodes
     /// and an index below 2^h (§4.1.8), so anything else is not a signature under this
-    /// key. The standardized sets have h = 10, 16 or 20; the reference implementation
+    /// key. The standardized sets have h = 10, 16 or 20; the Python implementation in py/
     /// also uses h = 4 for testing.
     function XMSS_verify(
         uint256 h,

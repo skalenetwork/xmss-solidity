@@ -32,7 +32,7 @@ Accepting a signature under a height other than the key's would need a collision
 ## Assumptions and trust base
 
 - **SHA-256 is modelled as an uninterpreted function.** The proofs hold for any hash function in that position, so they say nothing about SHA-256 itself; the security of XMSS rests on the published security proofs for XMSS and on SHA-256.
-- **The specification is a human transcription of the RFC.** It is checked in three ways. It follows the RFC pseudocode literally. It accepts every signature produced by the RFC's reference implementation at h = 4, 10 and 20 and rejects each one for a different message (`test_spec_referenceVectors_*`). And every verified RFC 8391 erratum (as of 2026-09) was reviewed against it; none changes what verification computes:
+- **The specification is a human transcription of the RFC.** It is checked in three ways. It follows the RFC pseudocode literally. It accepts every signature produced by an independent Python implementation of RFC 8391 (`py/xmss_ref.py`, written for this project; not the RFC authors' C reference implementation, against which it has not yet been cross-checked) at h = 4, 10 and 20, and rejects each one for a different message (`test_spec_referenceVectors_*`). And every verified RFC 8391 erratum (as of 2026-09) was reviewed against it; none changes what verification computes:
   - 5572, 5573, 8382, 8383 and 8396 correct argument orders and a key-generation return value;
   - 7412 replaces `bits += 8` with `bits = 8` in base_w, identical since `bits` is 0 there;
   - 6821 corrects the documented checksum bound (the code relies on the correct bound, ≤ 960);

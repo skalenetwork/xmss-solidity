@@ -10,7 +10,7 @@ import {RFC8391} from "./RFC8391.sol";
 ///         symbolic, so a PASS means the assertion holds for ALL inputs, with
 ///         SHA-256 modelled as an uninterpreted function (the result does not depend
 ///         on any property of SHA-256). `test_*` functions are ordinary Foundry tests
-///         of the specification against the RFC reference implementation's vectors.
+///         of the specification against vectors from an independent Python implementation of RFC 8391.
 ///
 ///         halmos --match-contract XMSSEquivalence --loop 70
 contract XMSSEquivalence is Test {
@@ -188,7 +188,7 @@ contract XMSSEquivalence is Test {
         assertEq(impl, RFC8391.XMSS_rootFromSig(idx, copy, sig.authPath, mPrime, SEED));
     }
 
-    // ── The specification against the RFC reference implementation ────────
+    // ── The specification against an independent Python implementation ────
 
     function _vector(string memory file, uint256 i)
         internal
@@ -209,7 +209,7 @@ contract XMSSEquivalence is Test {
         auth = vm.parseJsonBytes32Array(json, string.concat(base, ".auth"));
     }
 
-    /// The spec accepts every reference-implementation signature and rejects it for
+    /// The spec accepts every signature from py/xmss_ref.py and rejects it for
     /// any other message, so the transcription computes what RFC 8391 computes.
     function _specAgainstReference(string memory file) internal view {
         for (uint256 i = 0; i < 4; i++) { // each vector file holds 4 signatures

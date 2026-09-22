@@ -12,6 +12,15 @@ contract XMSSWrapper {
     ) external view returns (bool) {
         return XMSS.verify(messageDigest, sig, pk);
     }
+
+    function verifyWithHeight(
+        bytes32 messageDigest,
+        XMSS.Signature memory sig,
+        XMSS.PublicKey memory pk,
+        uint256 treeHeight
+    ) external view returns (bool) {
+        return XMSS.verify(messageDigest, sig, pk, treeHeight);
+    }
 }
 
 contract XMSSTest is Test {
@@ -252,5 +261,29 @@ contract XMSSTest is Test {
         assertTrue(ok);
         emit log_named_uint("XMSS verify gas (h=20, measured)", used);
         assertLt(used, 1_100_000, "h=20 verification exceeds gas budget");
+    }
+
+    // ------------------------------------------------------------------
+    // verify(..., treeHeight): the key's height is bound, as RFC 8391's OID does
+    // ------------------------------------------------------------------
+
+    function _checkHeightBinding(string memory file, uint256 h) internal view {
+        (bytes32 m, XMSS.Signature memory sig, XMSS.PublicKey memory pk) = loadVector(file, 0);
+        assertTrue(wrapper.verifyWithHeight(m, sig, pk, h), "valid signature rejected at its own height");
+        assertFalse(wrapper.verifyWithHeight(m, sig, pk, h - 1), "accepted for a lower height");
+        assertFalse(wrapper.verifyWithHeight(m, sig, pk, h + 1), "accepted for a higher height");
+        assertFalse(wrapper.verifyWithHeight(m, sig, pk, 0), "accepted for height 0");
+    }
+
+    function test_verifyWithHeight_h4() public view {
+        _checkHeightBinding("xmss_h4.json", 4);
+    }
+
+    function test_verifyWithHeight_h10() public view {
+        _checkHeightBinding("xmss_h10.json", 10);
+    }
+
+    function test_verifyWithHeight_h20() public view {
+        _checkHeightBinding("xmss_h20.json", 20);
     }
 }

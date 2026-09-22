@@ -44,9 +44,28 @@ library XMSS {
     // Public API
     // ------------------------------------------------------------------
 
-    /// @notice Verify an XMSS signature over `messageDigest`.
+    /// @notice Verify an XMSS signature over `messageDigest` for a key of tree height
+    ///         `treeHeight`. Prefer this form: RFC 8391's public key carries an OID that
+    ///         fixes the parameter set, and so the tree height (§4.1.7, §5.3); `PublicKey`
+    ///         has no OID, so the caller supplies the height it registered for the key.
+    /// @return true iff `sig` has exactly `treeHeight` authentication nodes and is a
+    ///         valid signature on `messageDigest` under `pk`.
+    function verify(
+        bytes32 messageDigest,
+        Signature memory sig,
+        PublicKey memory pk,
+        uint256 treeHeight
+    ) internal view returns (bool) {
+        if (sig.authPath.length != treeHeight) return false;
+        return verify(messageDigest, sig, pk);
+    }
+
+    /// @notice Verify an XMSS signature over `messageDigest`, taking the tree height
+    ///         from the signature (`sig.authPath.length`, 1..20). The height is then
+    ///         chosen by whoever supplies the signature, so bind it yourself (as
+    ///         FermionWallet's registry does) or use the four-argument `verify`.
     /// @param messageDigest 32-byte message digest (e.g. an EIP-712 struct hash).
-    /// @return true iff the signature is valid for `pk`.
+    /// @return true iff the signature is valid for `pk` at height `sig.authPath.length`.
     function verify(
         bytes32 messageDigest,
         Signature memory sig,
@@ -77,7 +96,7 @@ library XMSS {
         return node == pk.root;
     }
 
-    /// M' = H_msg(r || root || toByte(idx, 32), M)       (RFC 8391 §4.1.9, §5.1)
+    /// M' = H_msg(r || root || toByte(idx, 32), M)       (RFC 8391 Algorithm 14 in §4.1.10; §5.1)
     ///    = SHA-256(toByte(2, 32) || r || root || toByte(idx, 32) || M)
     function hMsg(bytes32 r, bytes32 root, uint32 idx, bytes32 m) internal pure returns (bytes32) {
         return sha256(abi.encodePacked(uint256(2), r, root, uint256(idx), m));

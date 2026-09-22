@@ -10,7 +10,7 @@ A large enough quantum computer breaks ECDSA, and with it every Ethereum account
 ```solidity
 import {XMSS} from "xmss-solidity/XMSS.sol";
 
-bool ok = XMSS.verify(messageDigest, signature, XMSS.PublicKey(root, seed));
+bool ok = XMSS.verify(messageDigest, signature, XMSS.PublicKey(root, seed), treeHeight);
 ```
 
 | | |
@@ -34,7 +34,7 @@ forge test --match-test "test_gas_verify_h20|test_verify_h20_allVectors" -vv
 
 ```
 [PASS] test_gas_verify_h20()
-  XMSS verify gas (h=20, measured): 744906
+  XMSS verify gas (h=20, measured): 745003
 [PASS] test_verify_h20_allVectors()
 ```
 
@@ -93,10 +93,12 @@ import {XMSS} from "xmss-solidity/XMSS.sol";
 contract MyVerifier {
     mapping(bytes32 => mapping(uint32 => bool)) public leafUsed; // per key: one-time leaves
 
-    function check(bytes32 digest, XMSS.Signature memory sig, bytes32 root, bytes32 seed) external {
-        bytes32 key = keccak256(abi.encode(root, seed));
+    function check(bytes32 digest, XMSS.Signature memory sig, bytes32 root, bytes32 seed, uint256 treeHeight)
+        external
+    {
+        bytes32 key = keccak256(abi.encode(root, seed, treeHeight));
         require(!leafUsed[key][sig.leafIdx], "leaf already used");
-        require(XMSS.verify(digest, sig, XMSS.PublicKey(root, seed)), "invalid XMSS signature");
+        require(XMSS.verify(digest, sig, XMSS.PublicKey(root, seed), treeHeight), "invalid XMSS signature");
         leafUsed[key][sig.leafIdx] = true; // XMSS is stateful: never accept a leaf twice
     }
 }
@@ -109,27 +111,32 @@ contract MyVerifier {
 ### `XMSS.verify`
 
 ```solidity
+function verify(bytes32 messageDigest, XMSS.Signature memory sig, XMSS.PublicKey memory pk, uint256 treeHeight)
+    internal view returns (bool)
+
 function verify(bytes32 messageDigest, XMSS.Signature memory sig, XMSS.PublicKey memory pk)
     internal view returns (bool)
 ```
 
-Returns `true` if and only if `sig` is a valid RFC 8391 XMSS signature on `messageDigest` under `pk`. The tree height `h` is taken from `sig.authPath.length`.
+Returns `true` if and only if `sig` is a valid RFC 8391 XMSS signature on `messageDigest` under `pk`.
 
-It returns `false`, without hashing anything, when:
+**Use the four-argument form.** RFC 8391's public key includes an OID that fixes the tree height; `PublicKey` does not, so pass the height you registered for the key. A signature whose `authPath` does not have exactly `treeHeight` entries is rejected. The three-argument form takes the height from `sig.authPath.length`, which lets whoever supplies the signature choose it; use it only if you check the height yourself. See [PROOF.md](PROOF.md#tree-height-and-the-public-key).
+
+Both return `false`, without hashing anything, when:
 - `pk.root` or `pk.seed` is zero (malformed key);
-- `h` is 0 or greater than 20;
+- the height is 0 or greater than 20;
 - `sig.leafIdx` is not below 2^h.
 
-Otherwise it recomputes the tree root from the signature (Algorithms 13 and 14 of RFC 8391) and returns whether it equals `pk.root`.
+Otherwise they recompute the tree root from the signature (Algorithms 13 and 14 of RFC 8391) and return whether it equals `pk.root`.
 
-It reverts, with empty revert data, only if a SHA-256 precompile call fails, which happens when the transaction runs out of gas. Each precompile call gets a fixed 1,000-gas stipend.
+They revert, with empty revert data, only if a SHA-256 precompile call fails, which happens when the transaction runs out of gas. Each precompile call gets a fixed 1,000-gas stipend.
 
-`view` because it calls the SHA-256 precompile; it reads no storage. The library is `internal`, so it is compiled into your contract and needs no separate deployment.
+`view` because they call the SHA-256 precompile; they read no storage. The library is `internal`, so it is compiled into your contract and needs no separate deployment.
 
 **What the caller must do:**
 - **Consume each leaf once per key.** The library is stateless. Accepting two signatures with the same `leafIdx` under one key lets an attacker forge; see the example above.
 - **Bind the context into `messageDigest`.** Sign an EIP-712 digest (or similar) that includes the chain id, your contract's address and a nonce, so a signature can't be replayed elsewhere.
-- **Pin the key.** Accept only public keys registered through a trusted process; the library checks signatures against whatever key it is given.
+- **Pin the key and its height.** Accept only public keys registered through a trusted process, and pass each key's registered height; the library checks signatures against whatever key it is given.
 
 ### `XMSS.PublicKey`
 
@@ -140,7 +147,7 @@ struct PublicKey {
 }
 ```
 
-The XMSS public key of RFC 8391 §4.1.7 (the OID is implied by the parameter set).
+The root and SEED of RFC 8391's public key (§4.1.7). The RFC's key also carries an OID that fixes the parameter set and tree height; here the caller supplies the height to `verify`.
 
 ### `XMSS.Signature`
 

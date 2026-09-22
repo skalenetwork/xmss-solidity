@@ -14,10 +14,20 @@
 | 4 | `ltree` | Algorithm 8 (ltree) | every 67 nodes, SEED, L-tree address |
 | 5 | `climbStep` | one iteration of Algorithm 13's loop | every node, sibling, SEED, idx, and level k < 20 |
 | 6 | (spec only) | Algorithm 13's tree-index update keeps floor(idx / 2^k) | every idx, k < 20 |
-| 7 | `hMsg` | H_msg, §4.1.9 and §5.1 | every r, root, idx, M |
-| 8 | `verify`'s input checks | domain of the parameter sets | rejects zero root or SEED, h = 0 or h > 20, idx ≥ 2^h |
+| 7 | `hMsg` | H_msg in Algorithm 14 (§4.1.10), §5.1 | every r, root, idx, M |
+| 8 | `verify`'s input checks | domain of the parameter sets | returns false for every input with zero root or SEED, h = 0 or h > 20, or idx ≥ 2^h |
+| 9 | `verify(…, treeHeight)` | the key's parameter set fixes h (§4.1.7, §5.3) | returns false whenever the signature does not carry exactly `treeHeight` authentication nodes |
 
 **Composition.** `rootFromSig` is `wotsPkFromSig` (`chain` over the 67 digits from `wotsDigit`), then `ltree`, then `climbStep` for k = 0 … h−1, and `verify` compares its result with the root after `hMsg`. Algorithm 13 and Algorithm 14 have the same structure, so Lemmas 1–7 give the equality for every h by induction over the loop, with Lemma 6 as the loop invariant. This composition argument is checked by hand and, for all signatures, auth paths, SEEDs and indices at h = 2, symbolically (`check_rootFromSig_h2`). It is not machine-checked for general h.
+
+## Tree height and the public key
+
+RFC 8391's public key is `OID || root || SEED` (§4.1.7). The OID names the parameter set and so fixes the tree height h (§5.3); a signature for that set carries exactly h authentication nodes (§4.1.8). `XMSS.PublicKey` holds only `root` and `SEED`, so the library offers two forms:
+
+- **`verify(M, sig, pk, treeHeight)`**, recommended. The caller supplies the height it registered for the key, and a signature with a different number of authentication nodes is rejected (Lemma 9). With a matching height it computes exactly the specification's `XMSS_verify(h, …)`, which takes h from the parameter set as the RFC does.
+- **`verify(M, sig, pk)`** takes h from `sig.authPath.length`, so whoever supplies the signature also chooses the height (1 to 20, including non-standard heights). It equals the specification's `XMSS_verify` with h set to the signature's own height. Use it only if you bind the height yourself; FermionWallet's key registry does, by comparing `authPath.length` with the height stored for the key.
+
+Accepting a signature under a height other than the key's would need a collision in the tree root, so the practical risk of the three-argument form is low, but only the four-argument form matches the RFC's key model.
 
 ## Assumptions and trust base
 

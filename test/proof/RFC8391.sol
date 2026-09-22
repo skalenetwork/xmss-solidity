@@ -63,7 +63,7 @@ library RFC8391 {
         return sha256(abi.encodePacked(uint256(1), KEY, M0, M1));
     }
 
-    /// H_msg(KEY, M) with KEY = r || getRoot(PK) || toByte(idx_sig, n)   (§4.1.9)
+    /// H_msg(KEY, M) with KEY = r || getRoot(PK) || toByte(idx_sig, n)   (Algorithm 14, §4.1.10)
     function H_msg(bytes32 r, bytes32 root, uint32 idx_sig, bytes32 M) internal pure returns (bytes32) {
         bytes memory KEY = abi.encodePacked(r, root, uint256(idx_sig));
         return sha256(abi.encodePacked(uint256(2), KEY, M));
@@ -213,10 +213,13 @@ library RFC8391 {
 
     // ── Algorithm 14: XMSS_verify ──────────────────────────────────────────
 
-    /// The RFC's verify, for one parameter set: h = auth.length must be a
-    /// standardized height of that set (10, 16 or 20; 4 is the test height the
-    /// reference implementation also supports) and idx_sig < 2^h.
+    /// Algorithm 14 for the parameter set XMSS-SHA2_h_256. The public key's OID fixes
+    /// h (§4.1.7, §5.3). A signature for that set holds exactly h authentication nodes
+    /// and an index below 2^h (§4.1.8), so anything else is not a signature under this
+    /// key. The standardized sets have h = 10, 16 or 20; the reference implementation
+    /// also uses h = 4 for testing.
     function XMSS_verify(
+        uint256 h,
         bytes32 M,
         uint32 idx_sig,
         bytes32 r,
@@ -225,6 +228,7 @@ library RFC8391 {
         bytes32 root,
         bytes32 SEED
     ) internal pure returns (bool) {
+        if (auth.length != h || uint256(idx_sig) >= 2 ** h) return false;
         bytes32 M_prime = H_msg(r, root, idx_sig, M);
         return XMSS_rootFromSig(idx_sig, sig_ots, auth, M_prime, SEED) == root;
     }

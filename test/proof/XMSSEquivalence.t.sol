@@ -111,7 +111,7 @@ contract XMSSEquivalence is Test {
         assert(next == uint32(uint256(idx) >> (k + 1)));
     }
 
-    // ── Lemma 7: hMsg == H_msg (§4.1.9, §5.1) ──────────────────────────────
+    // ── Lemma 7: hMsg == H_msg (Algorithm 14, §5.1) ──────────────────────────────
 
     function check_hMsg(bytes32 r, bytes32 root, uint32 idx, bytes32 M) public pure {
         assertEq(XMSS.hMsg(r, root, idx, M), RFC8391.H_msg(r, root, idx, M));
@@ -119,8 +119,9 @@ contract XMSSEquivalence is Test {
 
     // ── Lemma 8: verify's input checks ─────────────────────────────────────
 
-    /// Production rejects, before hashing anything, exactly the inputs outside the
-    /// supported domain: zero root or SEED, h = 0 or h > 20, idx >= 2^h.
+    /// Production rejects, before hashing anything, every input outside the supported
+    /// domain: zero root or SEED, h = 0 or h > 20, idx >= 2^h. (That in-domain inputs
+    /// reach the RFC computation follows from the composition, not from this lemma.)
     function check_verifyRejectsOutOfDomain(bytes32 M, uint32 idx, bytes32 r, bytes32 root, bytes32 seed, uint8 h)
         public
         view
@@ -135,6 +136,28 @@ contract XMSSEquivalence is Test {
                 sig.r = r;
                 sig.authPath = new bytes32[](c);
                 assertFalse(XMSS.verify(M, sig, XMSS.PublicKey(root, seed)));
+            }
+        }
+    }
+
+    // ── Lemma 9: the four-argument verify binds the tree height ────────────
+
+    /// verify(M, sig, pk, treeHeight) returns false whenever the signature does not
+    /// carry exactly treeHeight authentication nodes, for every other input. With a
+    /// matching length it is verify(M, sig, pk) (its second line).
+    function check_verifyBindsHeight(bytes32 M, uint32 idx, bytes32 r, bytes32 root, bytes32 seed, uint8 h, uint256 treeHeight)
+        public
+        view
+    {
+        vm.assume(h <= 24);
+        vm.assume(treeHeight != h);
+        for (uint256 c = 0; c <= 24; c++) {
+            if (c == h) {
+                XMSS.Signature memory sig;
+                sig.leafIdx = idx;
+                sig.r = r;
+                sig.authPath = new bytes32[](c);
+                assertFalse(XMSS.verify(M, sig, XMSS.PublicKey(root, seed), treeHeight));
             }
         }
     }
@@ -192,9 +215,13 @@ contract XMSSEquivalence is Test {
         for (uint256 i = 0; i < 4; i++) { // each vector file holds 4 signatures
             (bytes32 M, uint32 idx, bytes32 r, bytes32[67] memory ots, bytes32[] memory auth, bytes32 root, bytes32 seed)
             = _vector(file, i);
-            assertTrue(RFC8391.XMSS_verify(M, idx, r, ots, auth, root, seed), "spec rejects a reference signature");
+            assertTrue(RFC8391.XMSS_verify(auth.length, M, idx, r, ots, auth, root, seed), "spec rejects a reference signature");
             assertFalse(
-                RFC8391.XMSS_verify(bytes32(uint256(M) ^ 1), idx, r, ots, auth, root, seed),
+                RFC8391.XMSS_verify(auth.length + 1, M, idx, r, ots, auth, root, seed),
+                "spec accepts a signature for another tree height"
+            );
+            assertFalse(
+                RFC8391.XMSS_verify(auth.length, bytes32(uint256(M) ^ 1), idx, r, ots, auth, root, seed),
                 "spec accepts a wrong message"
             );
         }

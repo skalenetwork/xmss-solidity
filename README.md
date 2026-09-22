@@ -1,11 +1,11 @@
 # xmss-solidity
 
-On-chain verification of **XMSS** post-quantum signatures ([RFC 8391](https://www.rfc-editor.org/rfc/rfc8391)), in Solidity, **formally verified against the RFC**.
+[![CI](https://github.com/skalenetwork/xmss-solidity/actions/workflows/ci.yml/badge.svg)](https://github.com/skalenetwork/xmss-solidity/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-- **Parameter sets:** XMSS-SHA2_h_256 (SHA-256, n = 32, w = 16, len = 67), single tree, h = 10, 16 or 20 (NIST SP 800-208). h = 4 is supported for testing.
-- **Stateless and storage-free.** One `internal` library, `XMSS.verify`, using the SHA-256 precompile.
-- **Gas:** about 712k at h = 10 and 745k at h = 20.
-- **Formally verified:** proven by symbolic execution ([Halmos](https://github.com/a16z/halmos)) to compute what RFC 8391's verification algorithms compute, for all inputs. See [PROOF.md](PROOF.md) for what is proven, how, and what is assumed.
+**Post-quantum signatures on Ethereum, today.** Verify [XMSS](https://www.rfc-editor.org/rfc/rfc8391) signatures fully on-chain in pure Solidity, with a formal proof that the code computes exactly what RFC 8391 specifies, for every possible input.
+
+A large enough quantum computer breaks ECDSA, and with it every Ethereum account, multisig and bridge key. XMSS is a hash-based signature scheme standardized in RFC 8391 and approved by NIST (SP 800-208). Its security rests only on the hash function, not on new mathematical assumptions. Because verifying it is pure hashing, the EVM can check it directly, with no oracle, no trusted server and no new precompile.
 
 ```solidity
 import {XMSS} from "xmss-solidity/XMSS.sol";
@@ -13,9 +13,22 @@ import {XMSS} from "xmss-solidity/XMSS.sol";
 bool ok = XMSS.verify(messageDigest, signature, XMSS.PublicKey(root, seed));
 ```
 
-## XMSS is stateful: never verify without consuming the leaf
+| | |
+|---|---|
+| **Standard** | RFC 8391, XMSS-SHA2_h_256 (SHA-256, n = 32, w = 16); NIST SP 800-208 |
+| **Tree heights** | 10, 16 and 20 (up to 2^20 = 1,048,576 signatures per key); 4 for testing |
+| **Gas** | about 712k at h = 10 and 745k at h = 20, using only the SHA-256 precompile |
+| **Formally verified** | proven equivalent to RFC 8391's verification algorithms with [Halmos](https://github.com/a16z/halmos); the proof runs in CI on every push. See [PROOF.md](PROOF.md) |
+| **Footprint** | one `internal` library: no deployment, no storage, no dependencies |
+| **Licence** | MIT |
 
-XMSS is a one-time-signature scheme under a Merkle tree. Each leaf index may sign **once**; a second signature with the same leaf leaks enough of the one-time key to forge. The library only checks that a signature is valid. A contract that uses it **must** record every `leafIdx` it accepts for a key and reject reuse. [FermionWallet](https://github.com/skalenetwork/fermionwallet) does this in its key registry.
+## Why you can trust it
+
+Most signature code is trusted because it passed its tests. This library is also **proven**:
+
+- **An executable copy of the RFC.** [`test/proof/RFC8391.sol`](test/proof/RFC8391.sol) transcribes RFC 8391's verification algorithms line by line, citing each section. It accepts every signature from the RFC's reference implementation (h = 4, 10 and 20) and rejects each one for a different message.
+- **Proven equal, for all inputs.** Halmos proves each building block of the production verifier equal to the RFC's algorithm for every input: the hash chain, RAND_HASH, the WOTS+ digits and checksum, the L-tree, each tree level, H_msg and the input checks. Deliberately planted bugs are all caught.
+- **Stated assumptions.** SHA-256 is modelled as an abstract function, the proof covers one compiler configuration, and the composition for general tree heights rests on a written induction argument. [PROOF.md](PROOF.md) spells out every assumption.
 
 ## Install
 
@@ -52,7 +65,7 @@ import {XMSS} from "xmss-solidity/src/XMSS.sol";
 
 ### Compiler settings
 
-The library needs Solidity ^0.8.24 and no other dependencies. The formal proof covers the bytecode produced with **solc 0.8.37, via-IR, 200 optimizer runs** (see `foundry.toml`). Other compiler versions or settings compile the same source, but not the exact bytecode that was proven, so use these settings if you rely on the proof.
+The library needs Solidity ^0.8.24 and nothing else. The formal proof covers the bytecode produced with **solc 0.8.37, via-IR, 200 optimizer runs** (see `foundry.toml`). Other compiler versions or settings compile the same source, but not the exact bytecode that was proven, so use these settings if you rely on the proof.
 
 ## Use
 
@@ -71,7 +84,71 @@ contract MyVerifier {
 }
 ```
 
-`XMSS.Signature` is `{uint32 leafIdx; bytes32 r; bytes32[67] wotsSig; bytes32[] authPath}`; the tree height is the length of `authPath`. `py/xmss_ref.py` generates keys and signatures in this format for testing.
+`py/xmss_ref.py` generates keys and signatures in this format for testing.
+
+## API reference
+
+### `XMSS.verify`
+
+```solidity
+function verify(bytes32 messageDigest, XMSS.Signature memory sig, XMSS.PublicKey memory pk)
+    internal view returns (bool)
+```
+
+Returns `true` if and only if `sig` is a valid RFC 8391 XMSS signature on `messageDigest` under `pk`. The tree height `h` is taken from `sig.authPath.length`.
+
+It returns `false`, without hashing anything, when:
+- `pk.root` or `pk.seed` is zero (malformed key);
+- `h` is 0 or greater than 20;
+- `sig.leafIdx` is not below 2^h.
+
+Otherwise it recomputes the tree root from the signature (Algorithms 13 and 14 of RFC 8391) and returns whether it equals `pk.root`.
+
+It reverts, with empty revert data, only if a SHA-256 precompile call fails, which happens when the transaction runs out of gas. Each precompile call gets a fixed 1,000-gas stipend.
+
+`view` because it calls the SHA-256 precompile; it reads no storage. The library is `internal`, so it is compiled into your contract and needs no separate deployment.
+
+**What the caller must do:**
+- **Consume each leaf once per key.** The library is stateless. Accepting two signatures with the same `leafIdx` under one key lets an attacker forge; see the example above.
+- **Bind the context into `messageDigest`.** Sign an EIP-712 digest (or similar) that includes the chain id, your contract's address and a nonce, so a signature can't be replayed elsewhere.
+- **Pin the key.** Accept only public keys registered through a trusted process; the library checks signatures against whatever key it is given.
+
+### `XMSS.PublicKey`
+
+```solidity
+struct PublicKey {
+    bytes32 root; // Merkle tree root
+    bytes32 seed; // public SEED: keys and bitmasks for the hash functions
+}
+```
+
+The XMSS public key of RFC 8391 §4.1.7 (the OID is implied by the parameter set).
+
+### `XMSS.Signature`
+
+```solidity
+struct Signature {
+    uint32 leafIdx;       // idx_sig: the one-time leaf index
+    bytes32 r;            // randomizer for H_msg
+    bytes32[67] wotsSig;  // WOTS+ signature, 67 x 32 bytes
+    bytes32[] authPath;   // authentication path, h x 32 bytes (h = tree height)
+}
+```
+
+The XMSS signature of RFC 8391 §4.1.8: 4 + 32 × (68 + h) bytes, e.g. 2,820 bytes at h = 20.
+
+### Constants
+
+| Name | Value | Meaning |
+|---|---|---|
+| `XMSS.LEN` | 67 | WOTS+ chains per signature (len) |
+| `XMSS.LEN1` | 64 | message chains (len_1); the other 3 are checksum chains |
+| `XMSS.W_MINUS_1` | 15 | chain length, w − 1 |
+| `XMSS.MAX_HEIGHT` | 20 | largest supported tree height |
+
+### Internal building blocks
+
+`hMsg`, `rootFromSig`, `climbStep`, `wotsPkFromSig`, `wotsChecksum`, `wotsDigit`, `chain`, `ltree`, `randHash`, `prf`, `fHash`, `hHash` and `adrs` are `internal` so the proofs can check each one against the RFC. They are not a stable API: call `verify`.
 
 ## Layout
 
@@ -94,6 +171,14 @@ halmos --match-contract XMSSEquivalence --loop 70 --solver-timeout-assertion 0
 ```
 
 Halmos 0.3.3 needs a one-line fix to its SHA-256 model first; see [PROOF.md](PROOF.md#assumptions-and-trust-base) and the CI workflow.
+
+## Used by
+
+- [FermionWallet](https://github.com/skalenetwork/fermionwallet): post-quantum second authorization for Gnosis Safe. Every transfer needs a hybrid ECDSA + XMSS approval from a Ledger, verified on-chain with this library.
+
+## Status and security
+
+The verifier is formally verified against RFC 8391 but **not audited**. Signing and key generation must happen off-chain, in hardware that never reuses a leaf. Report security issues privately to the maintainers rather than in a public issue.
 
 ## Licence
 

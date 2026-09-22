@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.8.3
+      - run: forge test -vv
+
+  prove:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.8.3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Halmos 0.3.3 (with the SHA-256 model fix)
+        run: |
+          pip install halmos==0.3.3
+          SEVM="$(python -c 'import halmos, os; print(os.path.join(os.path.dirname(halmos.__file__), "sevm.py"))')"
+          # Halmos 0.3.3 sizes the SHA-256 input in bytes where bits are required.
+          sed -i 's/f"f_sha256_{arg_size}", BitVecSorts\[arg_size\], BitVecSort256/f"f_sha256_{arg_size}", BitVecSorts[arg_size * 8], BitVecSort256/' "$SEVM"
+          grep -q 'BitVecSorts\[arg_size \* 8\], BitVecSort256' "$SEVM"
+      - name: Prove src/XMSS.sol equivalent to RFC 8391
+        run: halmos --match-contract XMSSEquivalence --loop 70 --solver-timeout-assertion 0

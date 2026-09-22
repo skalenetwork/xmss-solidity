@@ -30,6 +30,22 @@
 - **Tooling.** Halmos 0.3.3 with Z3, over EVM bytecode compiled with this repository's settings (solc 0.8.37, via-IR, 200 optimizer runs). The proven bytecode is the test contract's compilation of the library; a contract that uses the library compiles it into its own bytecode, with the same source but in a different optimisation context. Halmos 0.3.3 declares the SHA-256 model with the wrong input width, `BitVecSorts[arg_size]` instead of `BitVecSorts[arg_size * 8]` in `sevm.py`, and needs that one-line fix to run these checks.
 - **Not covered:** key generation and signing (only verification is specified and proven), gas behaviour, and any contract that uses the library.
 
+## Proof run
+
+Halmos 0.3.3 (Z3), solc 0.8.37 via-IR, for release v0.1.0. All 9 checks pass; CI re-runs them on every push.
+
+| Check | Paths | Time |
+|---|---|---|
+| `check_chain` | 51 | 2.2 s |
+| `check_randHash` | 6 | < 0.1 s |
+| `check_wotsDigits` | 316 | 5.0 s |
+| `check_ltree` | 2 | 0.8 s |
+| `check_climbStep` | 16 | 1.5 s |
+| `check_treeIndexInvariant` | 7 | 3.9 s |
+| `check_hMsg` | 2 | < 0.1 s |
+| `check_verifyRejectsOutOfDomain` | 77 | 0.6 s |
+| `check_rootFromSig_h2` | 14 | 526 s |
+
 ## Checking that the proofs have teeth
 
 Each check was also run against deliberately broken copies of `src/XMSS.sol`: swapped bitmasks in `randHash`, a wrong key/mask word in `chain`, an off-by-one hash address, a missing L-tree height increment, a dropped odd L-tree node, a wrong domain byte in F, and misplaced address words. Halmos returned a counterexample for every one.

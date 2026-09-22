@@ -40,6 +40,25 @@ forge test --match-test "test_gas_verify_h20|test_verify_h20_allVectors" -vv
 
 The signatures come from an independent Python implementation of RFC 8391 (`py/xmss_ref.py`); Solidity checks them on-chain.
 
+## How verification works
+
+One signature is 67 WOTS+ chain values and a Merkle path. The chain checks every stage below against RFC 8391 (the lemma numbers are the proofs in [PROOF.md](PROOF.md)):
+
+```mermaid
+flowchart LR
+    M["message digest<br/>+ r, root, leaf index"] -->|"H_msg · Lemma 7"| D["M′ → 67 base-16 digits<br/>+ checksum · Lemma 3"]
+    S["signature<br/>67 × 32-byte WOTS+ values"] -->|"finish each hash chain<br/>Lemma 1"| P["WOTS+ public key<br/>67 nodes"]
+    D --> P
+    P -->|"L-tree · Lemma 4"| Leaf["leaf"]
+    Leaf -->|"climb h levels with the auth path<br/>Lemmas 5, 6"| R["computed root"]
+    R --> C{"== registered root?"}
+    C -->|yes| OK["valid ✓"]
+    C -->|no| NO["invalid ✗"]
+    K["public key<br/>root, SEED, height"] -.->|"SEED keys every hash<br/>Lemma 2 · height: Lemma 9"| P
+```
+
+Every arrow is SHA-256 and nothing else: roughly 1,900 to 3,400 precompile calls at h = 20, depending on the digits, no elliptic curves, no lattices, no new precompile. That is why the EVM can do it today, and why the whole computation could be proven equal to the RFC.
+
 ## Why you can trust it
 
 Most signature code is trusted because it passed its tests. This library is also **proven**:

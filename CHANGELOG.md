@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.0.0 — 2026-09-30
+
+First stable release. The verifier, the specification and the proofs are byte-for-byte those of v0.1.0; this release fixes the public API.
+
+- **Stable API.** `XMSS.verify` (both forms), `XMSS.PublicKey`, `XMSS.Signature` and the constants `LEN`, `LEN1`, `W_MINUS_1` and `MAX_HEIGHT` will not change incompatibly within 1.x. The `internal` helpers the proofs check remain implementation detail.
+- No change to the verifier, the RFC 8391 specification, the Halmos proofs or the gas cost (712,531 at h = 10; 745,003 at h = 20).
+- Still **not audited**, and callers must still consume each leaf index once and pass the key's registered tree height (see README and PROOF.md).
+
 ## v0.1.0 — 2026-09-22
 
 First release.

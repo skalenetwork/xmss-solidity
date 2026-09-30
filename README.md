@@ -72,7 +72,7 @@ Most signature code is trusted because it passed its tests. This library is also
 ### Foundry (recommended)
 
 ```sh
-forge install skalenetwork/xmss-solidity@v0.1.0
+forge install skalenetwork/xmss-solidity@v1.0.0
 ```
 
 Add the remapping to `remappings.txt` (or `foundry.toml`):
@@ -85,7 +85,7 @@ xmss-solidity/=lib/xmss-solidity/src/
 
 ```sh
 git submodule add https://github.com/skalenetwork/xmss-solidity lib/xmss-solidity
-cd lib/xmss-solidity && git checkout v0.1.0 && cd -
+cd lib/xmss-solidity && git checkout v1.0.0 && cd -
 ```
 
 Then add the same remapping as above.
@@ -93,7 +93,7 @@ Then add the same remapping as above.
 ### Hardhat or other npm-based setups
 
 ```sh
-npm install github:skalenetwork/xmss-solidity#v0.1.0
+npm install github:skalenetwork/xmss-solidity#v1.0.0
 ```
 
 ```solidity
@@ -222,7 +222,7 @@ Halmos 0.3.3 needs a one-line fix to its SHA-256 model first; see [PROOF.md](PRO
 
 ## Status and security
 
-The verifier is formally verified against RFC 8391 but **not audited**. Signing and key generation must happen off-chain, in hardware that never reuses a leaf. Report security issues privately to the maintainers rather than in a public issue.
+**v1.0.0 is a stable release: `XMSS.verify`, `PublicKey`, `Signature` and the constants will not change incompatibly in 1.x.** The verifier is formally verified against RFC 8391 but **not audited**. Signing and key generation must happen off-chain, in hardware that never reuses a leaf. Report security issues privately to the maintainers rather than in a public issue.
 
 ## Licence
 

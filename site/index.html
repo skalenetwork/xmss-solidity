@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xmss-solidity — post-quantum signatures, verified on-chain</title>
+<meta name="description" content="Verify XMSS (RFC 8391) post-quantum signatures fully on-chain in pure Solidity. Formally proven to compute exactly what the RFC specifies, for every input. ~745k gas. MIT.">
+<link rel="canonical" href="https://skalenetwork.github.io/xmss-solidity/">
+<meta name="theme-color" content="#0b0f14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="xmss-solidity — post-quantum signatures, verified on-chain">
+<meta property="og:description" content="XMSS (RFC 8391) verification in pure Solidity, formally proven equal to the RFC for every input. ~745k gas. MIT.">
+<meta property="og:url" content="https://skalenetwork.github.io/xmss-solidity/">
+<meta property="og:image" content="https://skalenetwork.github.io/xmss-solidity/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="xmss-solidity — post-quantum signatures, verified on-chain">
+<meta name="twitter:description" content="XMSS (RFC 8391) verification in pure Solidity, formally proven equal to the RFC for every input. ~745k gas. MIT.">
+<meta name="twitter:image" content="https://skalenetwork.github.io/xmss-solidity/og-image.png">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg:#0b0f14; --bg2:#111720; --card:#141b24; --line:#222c39;
+    --ink:#e9eef5; --dim:#97a3b4; --dimmer:#6d7887;
+    --accent:#4ade80; --accent2:#38bdf8; --warn:#fbbf24;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  a { color:var(--accent2); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .wrap { width:100%; max-width:1080px; margin:0 auto; padding:0 20px; }
+  h1, h2, h3 { line-height:1.2; letter-spacing:-0.02em; margin:0 0 16px; }
+  h1 { font-size:clamp(34px, 6vw, 60px); font-weight:800; }
+  h2 { font-size:clamp(26px, 4vw, 38px); font-weight:700; }
+  h3 { font-size:19px; font-weight:650; }
+  p { margin:0 0 16px; color:var(--dim); }
+  .lead { font-size:clamp(17px, 2.2vw, 21px); color:var(--dim); max-width:46em; }
+  code, pre { font-family:var(--mono); }
+  pre {
+    background:var(--bg2); border:1px solid var(--line); border-radius:12px;
+    padding:16px 18px; overflow-x:auto; font-size:13.5px; line-height:1.6; margin:0 0 16px;
+  }
+  pre .c { color:var(--dimmer); }
+  pre .k { color:var(--accent2); }
+  pre .s { color:var(--accent); }
+  p code, li code, td code { background:var(--bg2); border:1px solid var(--line);
+    border-radius:6px; padding:1px 6px; font-size:0.9em; color:var(--ink); }
+
+  header.nav { position:sticky; top:0; z-index:10; background:rgba(11,15,20,.88);
+    backdrop-filter:blur(8px); border-bottom:1px solid var(--line); }
+  .nav-in { display:flex; align-items:center; gap:18px; height:60px; }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:700; color:var(--ink); }
+  .brand svg { flex:none; }
+  .nav-links { margin-left:auto; display:flex; gap:20px; align-items:center; font-size:14.5px; }
+  .nav-links a { color:var(--dim); }
+  .nav-links a:hover { color:var(--ink); text-decoration:none; }
+  @media (max-width:640px){ .nav-links .hide-sm { display:none; } }
+
+  section { padding:72px 0; border-bottom:1px solid var(--line); }
+  section.hero { padding:84px 0 68px; border-bottom:none; }
+  .badges { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:22px; }
+  .badge { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600;
+    padding:5px 11px; border-radius:999px; border:1px solid var(--line); background:var(--bg2); color:var(--dim); }
+  .badge.ok { color:var(--accent); border-color:rgba(74,222,128,.35); background:rgba(74,222,128,.08); }
+  .cta { display:flex; flex-wrap:wrap; gap:12px; margin:26px 0 0; }
+  .btn { display:inline-flex; align-items:center; gap:8px; font-weight:650; font-size:15px;
+    padding:12px 20px; border-radius:10px; border:1px solid var(--line); color:var(--ink); background:var(--card); }
+  .btn:hover { border-color:var(--dimmer); text-decoration:none; }
+  .btn.primary { background:var(--accent); color:#06210f; border-color:var(--accent); }
+  .btn.primary:hover { filter:brightness(1.08); }
+
+  .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; margin-top:44px; }
+  @media (max-width:820px){ .stats { grid-template-columns:repeat(2, 1fr); } }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; }
+  .stat .v { font-size:clamp(20px, 3vw, 26px); font-weight:750; letter-spacing:-0.02em; }
+  .stat .l { font-size:13px; color:var(--dim); margin-top:4px; }
+
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:26px; align-items:start; }
+  .grid2 > *, .cards > *, .stats > * { min-width:0; }
+  @media (max-width:820px){ .grid2 { grid-template-columns:1fr; } }
+  .cards { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-top:28px; }
+  @media (max-width:900px){ .cards { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; }
+  .card p:last-child { margin-bottom:0; }
+
+  table { width:100%; border-collapse:collapse; font-size:14.5px; margin-top:8px; }
+  th, td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-size:12.5px; text-transform:uppercase; letter-spacing:.06em; font-weight:650; }
+  td:first-child { white-space:nowrap; }
+  .scroll-x { overflow-x:auto; }
+  @media (max-width:640px){ td:first-child { white-space:normal; } }
+
+  ol.steps { counter-reset:s; list-style:none; padding:0; margin:0; }
+  ol.steps li { position:relative; padding-left:44px; margin-bottom:18px; color:var(--dim); }
+  ol.steps li::before { counter-increment:s; content:counter(s); position:absolute; left:0; top:-1px;
+    width:28px; height:28px; border-radius:50%; background:var(--bg2); border:1px solid var(--line);
+    color:var(--accent); font-weight:700; font-size:14px; display:grid; place-items:center; }
+  ol.steps b { color:var(--ink); }
+
+  .pipe { display:flex; flex-wrap:wrap; gap:10px; align-items:stretch; margin-top:20px; }
+  .pipe .step { flex:1 1 150px; background:var(--card); border:1px solid var(--line);
+    border-radius:12px; padding:14px; min-width:0; }
+  .pipe .step .t { font-weight:650; font-size:14.5px; }
+  .pipe .step .d { font-size:12.5px; color:var(--dim); margin-top:4px; }
+  .pipe .step .lem { font-size:11.5px; color:var(--accent); margin-top:8px; font-family:var(--mono); }
+
+  details { border:1px solid var(--line); border-radius:12px; background:var(--card);
+    padding:14px 18px; margin-bottom:10px; }
+  details summary { cursor:pointer; font-weight:650; color:var(--ink); }
+  details[open] summary { margin-bottom:10px; }
+  details p:last-child { margin-bottom:0; }
+
+  .note { border-left:3px solid var(--warn); background:rgba(251,191,36,.07);
+    padding:14px 18px; border-radius:0 10px 10px 0; }
+  .note strong { color:var(--warn); }
+
+  footer { padding:44px 0 60px; color:var(--dimmer); font-size:14px; }
+  footer a { color:var(--dim); }
+  .foot-links { display:flex; flex-wrap:wrap; gap:18px; margin-bottom:18px; }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <span class="brand">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 2 3 6.5v6c0 5 3.8 8.6 9 9.5 5.2-.9 9-4.5 9-9.5v-6L12 2Z" stroke="#4ade80" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="m8.5 12 2.5 2.5 4.5-5" stroke="#4ade80" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      xmss-solidity
+    </span>
+    <nav class="nav-links">
+      <a class="hide-sm" href="#why">Why</a>
+      <a href="#proof">Proof</a>
+      <a class="hide-sm" href="#start">Quickstart</a>
+      <a href="https://github.com/skalenetwork/xmss-solidity">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="hero">
+  <div class="wrap">
+    <div class="badges">
+      <span class="badge ok">Formally verified against RFC 8391</span>
+      <span class="badge">MIT</span>
+      <span class="badge">No dependencies</span>
+      <span class="badge">v1.0.0</span>
+    </div>
+    <h1>Post-quantum signatures,<br>verified on-chain.</h1>
+    <p class="lead">
+      <strong>xmss-solidity</strong> verifies XMSS signatures (<a href="https://www.rfc-editor.org/rfc/rfc8391">RFC 8391</a>,
+      NIST SP 800-208) entirely inside the EVM, in pure Solidity — and it is <em>proven</em> to compute exactly
+      what the RFC specifies, for every possible input.
+    </p>
+<pre><code><span class="k">import</span> {XMSS} <span class="k">from</span> <span class="s">"xmss-solidity/XMSS.sol"</span>;
+
+<span class="c">// true iff sig is a valid XMSS signature on digest under this key</span>
+<span class="k">bool</span> ok = XMSS.verify(digest, sig, XMSS.PublicKey(root, seed), treeHeight);</code></pre>
+    <div class="cta">
+      <a class="btn primary" href="#start">Get started</a>
+      <a class="btn" href="https://github.com/skalenetwork/xmss-solidity">Source on GitHub</a>
+      <a class="btn" href="https://github.com/skalenetwork/xmss-solidity/blob/main/PROOF.md">Read the proof</a>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="v">745,003</div><div class="l">gas per verification, measured at h&nbsp;=&nbsp;20</div></div>
+      <div class="stat"><div class="v">11 proofs</div><div class="l">machine-checked, over all inputs</div></div>
+      <div class="stat"><div class="v">1,048,576</div><div class="l">signatures per key (2<sup>20</sup> leaves)</div></div>
+      <div class="stat"><div class="v">0 deps</div><div class="l">one internal library, SHA-256 precompile only</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="why">
+  <div class="wrap">
+    <h2>Why this exists</h2>
+    <div class="grid2">
+      <div>
+        <p>
+          A large enough quantum computer breaks ECDSA, and with it every Ethereum account, multisig and bridge key.
+          The replacements standardized so far are lattice schemes, which cost tens of millions of gas to verify —
+          or hash-based schemes, which the EVM can check directly.
+        </p>
+        <p>
+          XMSS is hash-based. Its security rests on SHA-256 alone: no new assumptions, no pairings, no trusted setup,
+          no oracle, no new precompile. Verification is a few thousand SHA-256 calls, which the EVM already has.
+        </p>
+      </div>
+      <div class="card">
+        <h3>What you get</h3>
+        <div class="scroll-x">
+        <table>
+          <tr><td>Standard</td><td>RFC 8391, XMSS-SHA2_h_256 (n&nbsp;=&nbsp;32, w&nbsp;=&nbsp;16)</td></tr>
+          <tr><td>Heights</td><td>10, 16, 20 (and 4 for testing)</td></tr>
+          <tr><td>Gas</td><td>~712k at h&nbsp;=&nbsp;10, ~745k at h&nbsp;=&nbsp;20</td></tr>
+          <tr><td>Signature</td><td>4&nbsp;+&nbsp;32&nbsp;×&nbsp;(68&nbsp;+&nbsp;h) bytes — 2,820 at h&nbsp;=&nbsp;20</td></tr>
+          <tr><td>Footprint</td><td><code>internal</code> library: no deployment, no storage</td></tr>
+        </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="proof">
+  <div class="wrap">
+    <h2>Most signature code is trusted because it passed its tests</h2>
+    <p class="lead">This one is also <strong>proven</strong>. An executable transcription of RFC 8391 sits beside the
+      verifier, and <a href="https://github.com/a16z/halmos">Halmos</a> proves the two compute the same thing —
+      not on sample inputs, on <em>all</em> of them, with SHA-256 treated as an abstract function.</p>
+
+    <div class="cards">
+      <div class="card">
+        <h3>The RFC, as runnable code</h3>
+        <p>Every verification algorithm of RFC 8391 is transcribed line by line, citing its section, and reviewed
+          against the published errata.</p>
+      </div>
+      <div class="card">
+        <h3>Proven equal, for all inputs</h3>
+        <p>Each building block — the hash chain, RAND_HASH, the WOTS+ digits, the L-tree, each tree level,
+          H_msg, the input checks, the height binding — is proven equal to its RFC algorithm.</p>
+      </div>
+      <div class="card">
+        <h3>Checked against foreign code</h3>
+        <p>The test vectors are accepted by the RFC authors' own C implementation, and tampered copies rejected —
+          code this project did not write.</p>
+      </div>
+    </div>
+
+    <h3 style="margin-top:40px">How a verification runs, and what covers each step</h3>
+    <div class="pipe">
+      <div class="step"><div class="t">Message → M′</div><div class="d">H_msg binds r, root and the leaf index</div><div class="lem">Lemma 7</div></div>
+      <div class="step"><div class="t">67 WOTS+ chains</div><div class="d">base-w digits, then F up to 15 times each</div><div class="lem">Lemmas 1, 3</div></div>
+      <div class="step"><div class="t">L-tree</div><div class="d">67 nodes compressed to one leaf</div><div class="lem">Lemmas 2, 4</div></div>
+      <div class="step"><div class="t">Merkle climb</div><div class="d">h levels along the authentication path</div><div class="lem">Lemmas 5, 6</div></div>
+      <div class="step"><div class="t">Compare to root</div><div class="d">and reject malformed keys and heights</div><div class="lem">Lemmas 8, 9</div></div>
+    </div>
+
+    <h3 style="margin-top:40px">A proof that passes on nothing would look identical</h3>
+    <p>So the proof is tested too, and the results are written down:</p>
+    <div class="scroll-x">
+      <table>
+        <thead><tr><th>Experiment</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td>Bugs planted in the verifier</td><td>7 of 7 caught, each with a counterexample</td></tr>
+          <tr><td>Bugs planted in the specification</td><td>9 of 11 caught; the 2 survivors are provably no-ops</td></tr>
+          <tr><td>Vacuity (assertions replaced by <code>assert(false)</code>)</td><td>every check still explores dozens to hundreds of paths</td></tr>
+          <tr><td>CI on every push</td><td>tests, C cross-check, and the proof — rejecting a run that is truncated, near-vacuous, or carries solver warnings</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:20px"><a href="https://github.com/skalenetwork/xmss-solidity/blob/main/PROOF.md">PROOF.md</a>
+      states exactly what is proven, what is assumed (SHA-256 as an abstract function, one compiler configuration,
+      composition for general h by written induction) and what is not covered.</p>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <h2>Quickstart</h2>
+    <div class="grid2">
+      <div>
+        <h3>See it verify a real signature</h3>
+<pre><code>git clone --recursive https://github.com/skalenetwork/xmss-solidity
+cd xmss-solidity
+forge test --match-test test_verify_h20_allVectors -vv</code></pre>
+        <p>Signatures at h&nbsp;=&nbsp;20 come from an independent Python implementation of RFC 8391; Solidity checks
+          them on-chain.</p>
+
+        <h3 style="margin-top:28px">Install</h3>
+<pre><code><span class="c"># Foundry</span>
+forge install skalenetwork/xmss-solidity@v1.0.0
+
+<span class="c"># remappings.txt</span>
+xmss-solidity/=lib/xmss-solidity/src/</code></pre>
+        <p>npm and git-submodule instructions are in the
+          <a href="https://github.com/skalenetwork/xmss-solidity#install">README</a>.</p>
+      </div>
+      <div>
+        <h3>Use it</h3>
+<pre><code><span class="k">import</span> {XMSS} <span class="k">from</span> <span class="s">"xmss-solidity/XMSS.sol"</span>;
+
+<span class="k">contract</span> MyVerifier {
+    <span class="c">// XMSS is stateful: each leaf signs exactly once</span>
+    <span class="k">mapping</span>(<span class="k">bytes32</span> =&gt; <span class="k">mapping</span>(<span class="k">uint32</span> =&gt; <span class="k">bool</span>)) <span class="k">public</span> leafUsed;
+
+    <span class="k">function</span> check(
+        <span class="k">bytes32</span> digest,
+        XMSS.Signature <span class="k">memory</span> sig,
+        <span class="k">bytes32</span> root,
+        <span class="k">bytes32</span> seed,
+        <span class="k">uint256</span> treeHeight
+    ) <span class="k">external</span> {
+        <span class="k">bytes32</span> key = <span class="k">keccak256</span>(<span class="k">abi</span>.encode(root, seed, treeHeight));
+        <span class="k">require</span>(!leafUsed[key][sig.leafIdx], <span class="s">"leaf used"</span>);
+        <span class="k">require</span>(
+            XMSS.verify(digest, sig, XMSS.PublicKey(root, seed), treeHeight),
+            <span class="s">"invalid XMSS signature"</span>
+        );
+        leafUsed[key][sig.leafIdx] = <span class="k">true</span>;
+    }
+}</code></pre>
+      </div>
+    </div>
+
+    <h3 style="margin-top:12px">Three rules for callers</h3>
+    <ol class="steps">
+      <li><b>Consume each leaf once per key.</b> The library is stateless. Two signatures under one leaf index let an attacker forge.</li>
+      <li><b>Pass the key's registered height.</b> RFC 8391's public key carries an OID that fixes the tree height; <code>PublicKey</code> does not, so the four-argument <code>verify</code> takes it from you.</li>
+      <li><b>Bind the context into the digest.</b> Sign an EIP-712 digest covering the chain id, your contract and a nonce, so a signature cannot be replayed elsewhere.</li>
+    </ol>
+
+    <div class="note" style="margin-top:26px">
+      <p style="margin:0"><strong>Not audited.</strong> The verifier is formally verified against RFC 8391, which is
+        not the same as an audit. Signing and key generation happen off-chain, in hardware that never reuses a leaf.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Questions</h2>
+    <details>
+      <summary>What does “formally verified” mean here, exactly?</summary>
+      <p>That the compiled verifier computes the same result as an executable transcription of RFC 8391's
+        verification algorithms, for every input, with SHA-256 modelled as an abstract function. It does not mean
+        XMSS is secure (that rests on published cryptographic proofs), nor that the library is audited, nor that
+        gas never runs out.</p>
+    </details>
+    <details>
+      <summary>Why XMSS and not ML-DSA or Falcon?</summary>
+      <p>Lattice verification costs tens of millions of gas on the EVM today. XMSS verification is pure hashing,
+        so it runs in about 0.7M gas with the SHA-256 precompile that already exists. The trade-off is that XMSS is
+        stateful: each key signs a fixed number of times, and each leaf exactly once.</p>
+    </details>
+    <details>
+      <summary>Is one key enough for production use?</summary>
+      <p>At h = 20 a key signs 1,048,576 times, and the signer tracks which leaf comes next. The contract side must
+        also record consumed leaves, which is one bitmap write per signature.</p>
+    </details>
+    <details>
+      <summary>Where do the signatures come from?</summary>
+      <p>Off-chain. The repository ships a Python implementation of RFC 8391 for key generation, signing and test
+        vectors. Production signing belongs in a hardware device that commits its leaf counter before releasing a
+        signature.</p>
+    </details>
+    <details>
+      <summary>Who uses it?</summary>
+      <p><a href="https://github.com/skalenetwork/fermionwallet">FermionWallet</a> requires a hybrid ECDSA + XMSS
+        approval, signed on a Ledger, for every transfer out of a Gnosis Safe — verified on-chain with this library.</p>
+    </details>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-links">
+      <a href="https://github.com/skalenetwork/xmss-solidity">GitHub</a>
+      <a href="https://github.com/skalenetwork/xmss-solidity/releases/latest">Releases</a>
+      <a href="https://github.com/skalenetwork/xmss-solidity/blob/main/PROOF.md">PROOF.md</a>
+      <a href="https://www.rfc-editor.org/rfc/rfc8391">RFC 8391</a>
+      <a href="https://csrc.nist.gov/pubs/sp/800/208/final">NIST SP 800-208</a>
+    </div>
+    <p style="margin:0">MIT licensed · formally verified against RFC 8391 · not audited — do not secure real funds without your own review.</p>
+  </div>
+</footer>
+
+</body>
+</html>

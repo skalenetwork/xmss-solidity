@@ -7,7 +7,8 @@ Usage:  sign_digest.py <h> <leaf_idx> <digest_hex>
 Prints a single hex blob (no 0x) laid out as fixed 32-byte words:
     root | seed | r | wotsSig[67] | authPath[h]
 The Foundry test parses this layout directly. MIT licensed. Test-only —
-production signing happens exclusively inside the Ledger secure element.
+production signing belongs in a hardware signer that commits its leaf counter
+before releasing a signature, so no leaf is ever used twice.
 """
 import functools
 import os

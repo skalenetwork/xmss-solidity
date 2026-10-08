@@ -26,7 +26,7 @@
 RFC 8391's public key is `OID || root || SEED` (§4.1.7). The OID names the parameter set and so fixes the tree height h (§5.3); a signature for that set carries exactly h authentication nodes (§4.1.8). `XMSS.PublicKey` holds only `root` and `SEED`, so the library offers two forms:
 
 - **`verify(M, sig, pk, treeHeight)`**, recommended. The caller supplies the height it registered for the key, and a signature with a different number of authentication nodes is rejected (Lemma 9). With a matching height it computes exactly the specification's `XMSS_verify(h, …)`, which takes h from the parameter set as the RFC does.
-- **`verify(M, sig, pk)`** takes h from `sig.authPath.length`, so whoever supplies the signature also chooses the height (1 to 20, including non-standard heights). It equals the specification's `XMSS_verify` with h set to the signature's own height. Use it only if you bind the height yourself; FermionWallet's key registry does, by comparing `authPath.length` with the height stored for the key.
+- **`verify(M, sig, pk)`** takes h from `sig.authPath.length`, so whoever supplies the signature also chooses the height (1 to 20, including non-standard heights). It equals the specification's `XMSS_verify` with h set to the signature's own height. Use it only if you bind the height yourself, for example by comparing `authPath.length` with a height stored for the key.
 
 Accepting a signature under a height other than the key's would need a collision in the tree root, so the practical risk of the three-argument form is low, but only the four-argument form matches the RFC's key model.
 

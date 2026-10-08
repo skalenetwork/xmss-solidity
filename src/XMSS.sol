@@ -7,11 +7,11 @@ pragma solidity ^0.8.24;
 ///         SHA-256 precompile. Parameters: n = 32, w = 16, len = 67; tree height
 ///         is taken from the auth-path length, capped at the largest standardized
 ///         single-tree height (20, XMSS-SHA2_20_256).
-/// @dev    Stateless and storage-free. Leaf-index reuse protection (mandatory for
-///         XMSS security) is enforced by the FermionWallet Guard's
-///         QuantumKeyRegistry — never expose this library to callers that do not consume
-///         leaf indices, as specified in fermionwallet-guard-module.md.
-/// @author FermionWallet — MIT licensed.
+/// @dev    Stateless and storage-free. XMSS is a stateful scheme: each leaf (one-time
+///         key) may sign only one message, so a caller that grants authority on a valid
+///         signature MUST record the signature's `leafIdx` as spent and refuse any later
+///         signature with the same index. This library does not do that for you.
+/// @author skalenetwork/xmss-solidity — MIT licensed.
 library XMSS {
     /// Winternitz parameter w = 16: 4 bits per chain, 64 message chains,
     /// 3 checksum chains, chain length w - 1 = 15.
@@ -62,8 +62,9 @@ library XMSS {
 
     /// @notice Verify an XMSS signature over `messageDigest`, taking the tree height
     ///         from the signature (`sig.authPath.length`, 1..20). The height is then
-    ///         chosen by whoever supplies the signature, so bind it yourself (as
-    ///         FermionWallet's registry does) or use the four-argument `verify`.
+    ///         chosen by whoever supplies the signature, so bind it yourself (for
+    ///         example, compare it with a height stored for the key) or use the
+    ///         four-argument `verify`.
     /// @param messageDigest 32-byte message digest (e.g. an EIP-712 struct hash).
     /// @return true iff the signature is valid for `pk` at height `sig.authPath.length`.
     function verify(

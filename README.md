@@ -218,10 +218,6 @@ halmos --match-contract XMSSEquivalence --loop 70 --solver-timeout-assertion 0
 
 Halmos 0.3.3 needs a one-line fix to its SHA-256 model first; see [PROOF.md](PROOF.md#assumptions-and-trust-base) and the CI workflow.
 
-## Used by
-
-- [FermionWallet](https://github.com/skalenetwork/fermionwallet): post-quantum second authorization for Gnosis Safe. Every transfer needs a hybrid ECDSA + XMSS approval from a Ledger, verified on-chain with this library.
-
 ## Status and security
 
 **v1.0.0 is a stable release: `XMSS.verify`, `PublicKey`, `Signature` and the constants will not change incompatibly in 1.x.** The verifier is formally verified against RFC 8391 but **not audited**. Signing and key generation must happen off-chain, in hardware that never reuses a leaf. Report security issues privately to the maintainers rather than in a public issue.

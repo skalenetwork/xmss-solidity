@@ -17,11 +17,14 @@ depend on anything here.
 | [`test/registry-proof/`](test/registry-proof/README.md) | the registry's state machine as executable code, proven equivalent to the contract with Halmos |
 | [`test/XmssVerifier.t.sol`](test/XmssVerifier.t.sol) | `XmssVerifier`'s tests |
 | [`eips/`](eips/README.md) | the ERC drafts (CC0) and `check_eips.py` |
-| `scripts/` | `check_requirements.py` (requirement-ID traceability) and `describe_spec.py` (renders the registry proof's specification as `DESCRIPTION.md`) |
+| `scripts/` | `setup-deps.sh` (fetches OpenZeppelin and Safe into `lib/`), `check_requirements.py` (requirement-ID traceability) and `describe_spec.py` (renders the registry proof's specification as `DESCRIPTION.md`) |
 
 The two registry contracts are `abstract`: FermionWallet compiled them into its Safe guard,
 which stayed in FermionWallet together with most of their concrete tests. They need
-OpenZeppelin Contracts and the Safe smart account (`lib/`, remapped in `remappings.txt`).
+OpenZeppelin Contracts and the Safe smart account at the commits FermionWallet pinned. These are
+not git submodules, so installing the library never fetches them:
+[`scripts/setup-deps.sh`](scripts/setup-deps.sh) clones both into `reference/lib/` (gitignored),
+and the `reference` profile in `foundry.toml` remaps them there.
 Known issues are in the repository's [CHANGELOG](../CHANGELOG.md).
 
 ## Build, test, check
@@ -30,6 +33,7 @@ From the repository root. The `reference` Foundry profile compiles this folder; 
 profile, which builds and proves the library, never does.
 
 ```sh
+reference/scripts/setup-deps.sh
 FOUNDRY_PROFILE=reference forge test
 FOUNDRY_PROFILE=reference halmos --forge-build-out out/reference --match-contract RegistryEquivalence --loop 32 --solver-timeout-assertion 0
 python3 reference/scripts/check_requirements.py

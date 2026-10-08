@@ -18,6 +18,34 @@ jobs:
       - name: Cross-check the vectors against the RFC authors' C implementation
         run: scripts/crosscheck_reference.sh
 
+      # reference/: the key registry, pre-approval engine and EIP drafts moved from
+      # FermionWallet (reference/README.md). Built under their own Foundry profile, so
+      # nothing above compiles them.
+      - name: Fetch the reference implementation's dependencies (OpenZeppelin, Safe) at their pinned commits
+        run: reference/scripts/setup-deps.sh
+      - name: Reference implementation tests
+        run: FOUNDRY_PROFILE=reference forge test -vv
+      - name: Every requirement the reference tests cite exists in reference/docs/
+        # Uncovered requirements are printed, not fatal.
+        run: python3 reference/scripts/check_requirements.py
+      - name: The registry proof's English rendering is current
+        run: python3 reference/scripts/describe_spec.py --check reference/test/registry-proof/DESCRIPTION.md
+      - name: The EIP drafts still describe the contracts they claim to
+        # After foundry-toolchain, so `cast` is there to check quoted type hashes.
+        run: python3 reference/eips/check_eips.py
+      - name: The registry verifies with the key's registered tree height
+        # No test can tell the three-argument XMSS.verify from the four-argument one here:
+        # the registry's own authPath length check reverts first ([QKR-034a]).
+        run: |
+          grep -qE 'XMSS\.verify\(digest, sig, XMSS\.PublicKey\(\{root: k\.xmssRoot, seed: k\.xmssSeed\}\), k\.treeHeight\)' reference/src/QuantumKeyRegistry.sol \
+            || { echo "QuantumKeyRegistry must call the four-argument XMSS.verify with the registered treeHeight"; exit 1; }
+      - name: Nothing overrides the leaf-consumption enforcement point
+        # `_verifyAndConsumeXmss` is virtual only so reference/test/registry-proof can stub
+        # the possession proof; an override in source would forfeit the one-time-leaf guarantee.
+        run: |
+          ! grep -rnE '_verifyAndConsumeXmss[^;{]*\boverride\b' src/ reference/src/ \
+            || { echo "No contract may override _verifyAndConsumeXmss: it is the single enforcement point for XMSS leaf consumption"; exit 1; }
+
   prove:
     runs-on: ubuntu-latest
     steps:

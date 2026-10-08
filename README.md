@@ -19,9 +19,10 @@ bool ok = XMSS.verify(messageDigest, signature, XMSS.PublicKey(root, seed), tree
 |---|---|
 | **Standard** | RFC 8391, XMSS-SHA2_h_256 (SHA-256, n = 32, w = 16); NIST SP 800-208 |
 | **Tree heights** | 10, 16 and 20 (up to 2^20 = 1,048,576 signatures per key); 4 for testing |
+| **XMSS^MT** | multi-tree XMSS (RFC 8391 §4.2), total heights 20, 40 and 60 (up to 2^60 signatures per key) in 2 to 12 layers; [below](#xmssmt-multi-tree-xmss) |
 | **Gas** | about 712k at h = 10 and 745k at h = 20, using only the SHA-256 precompile |
-| **Formally verified** | proven equivalent to RFC 8391's verification algorithms with [Halmos](https://github.com/a16z/halmos); the proof runs in CI on every push. See [PROOF.md](PROOF.md) |
-| **Footprint** | one `internal` library: no deployment, no storage, no dependencies |
+| **Formally verified** | proven equivalent to RFC 8391's verification algorithms with [Halmos](https://github.com/a16z/halmos); the proofs run in CI on every push. See [PROOF.md](PROOF.md) and [XMSSMT.md](test/proof/XMSSMT.md) |
+| **Footprint** | `internal` libraries (`XMSS`, and `XMSSMT` on top of it): no deployment, no storage, no dependencies |
 | **Licence** | MIT |
 
 ## Try it in 60 seconds
@@ -74,7 +75,7 @@ Most signature code is trusted because it passed its tests. This library is also
 ### Foundry (recommended)
 
 ```sh
-forge install skalenetwork/xmss-solidity@v1.0.0
+forge install skalenetwork/xmss-solidity@v1.1.0
 ```
 
 Add the remapping to `remappings.txt` (or `foundry.toml`):
@@ -87,7 +88,7 @@ xmss-solidity/=lib/xmss-solidity/src/
 
 ```sh
 git submodule add https://github.com/skalenetwork/xmss-solidity lib/xmss-solidity
-cd lib/xmss-solidity && git checkout v1.0.0 && cd -
+cd lib/xmss-solidity && git checkout v1.1.0 && cd -
 ```
 
 Then add the same remapping as above.
@@ -95,7 +96,7 @@ Then add the same remapping as above.
 ### Hardhat or other npm-based setups
 
 ```sh
-npm install github:skalenetwork/xmss-solidity#v1.0.0
+npm install github:skalenetwork/xmss-solidity#v1.1.0
 ```
 
 ```solidity
@@ -196,31 +197,79 @@ The XMSS signature of RFC 8391 §4.1.8: 4 + 32 × (68 + h) bytes, e.g. 2,820 byt
 
 `hMsg`, `rootFromSig`, `climbStep`, `wotsPkFromSig`, `wotsChecksum`, `wotsDigit`, `chain`, `ltree`, `randHash`, `prf`, `fHash`, `hHash` and `adrs` are `internal` so the proofs can check each one against the RFC. They are not a stable API: call `verify`.
 
+## XMSS^MT (multi-tree XMSS)
+
+`src/XMSSMT.sol` verifies XMSS^MT signatures (RFC 8391 §4.2, Algorithm 16): d XMSS trees stacked in layers, where the bottom tree signs the message and each tree above signs the root of the one below. A key can sign up to 2^h messages with h up to 60, while key generation and signing only ever build trees of height h/d.
+
+```solidity
+import {XMSS} from "xmss-solidity/XMSS.sol";
+import {XMSSMT} from "xmss-solidity/XMSSMT.sol";
+
+bool ok = XMSSMT.verify(messageDigest, sig, XMSS.PublicKey(root, seed), totalHeight, layerCount);
+// or, with the signature in RFC 8391's byte encoding (what xmss-reference emits):
+bool ok2 = XMSSMT.verifyEncoded(messageDigest, encodedSig, XMSS.PublicKey(root, seed), totalHeight, layerCount);
+```
+
+- **Parameters.** The caller passes the key's registered total height h and layer count d, as `XMSS.verify` takes the tree height: the RFC's OID fixes (h, d) and `PublicKey` has none. The eight standardized XMSSMT-SHA2_h/d_256 sets are (20, 2), (20, 4), (40, 2), (40, 4), (40, 8), (60, 3), (60, 6) and (60, 12); `validParams` also accepts other shapes (d ≥ 2, d divides h, 1 ≤ h/d ≤ 20, h ≤ 60).
+- **Signature.** `XMSSMT.Signature { uint64 idx; bytes32 r; Layer[] layers; }`, with each `Layer { bytes32[67] wotsSig; bytes32[] authPath; }` of h/d nodes, bottom layer first. `verify` returns `false`, without hashing, for a zero root or SEED, invalid (h, d), the wrong number of layers or auth-path nodes, or `idx` ≥ 2^h.
+- **Gas** (measured, `forge test --match-contract XMSSMTTest -vv`): about 1.85M at (20, 2), 3.34M at (20, 4), 6.99M at (40, 8) and 10.4M at (60, 12): roughly 0.85M to 0.93M per layer.
+- **Proven and cross-checked.** Halmos proves each XMSS^MT building block equal to [`test/proof/RFC8391MT.sol`](test/proof/RFC8391MT.sol), the RFC's XMSS^MT additions transcribed line by line; the specification accepts the vectors of an independent Python implementation (`py/xmssmt_ref.py`) at (4, 2), (20, 2), (20, 4), (40, 8) and (60, 12), and the RFC authors' C implementation accepts those of the four standardized sets. See [test/proof/XMSSMT.md](test/proof/XMSSMT.md).
+
+**XMSS^MT is as stateful as XMSS.** `idx` is the one-time index across the whole hypertree: it selects a one-time key in every layer, and signing two messages with one `idx` lets an attacker forge. The library cannot prevent that. **Record every `idx` you accept, per key, and refuse it again**, exactly as in the [XMSS example](#use) (keyed by `idx` instead of `leafIdx`), and bind the context into `messageDigest` and pin the key and its (h, d) as for XMSS.
+
 ## Layout
 
 | Path | What |
 |---|---|
 | `src/XMSS.sol` | the verifier |
+| `src/XMSSMT.sol` | the XMSS^MT verifier, built on `XMSS` |
 | `test/proof/RFC8391.sol` | executable specification: RFC 8391's verification algorithms, transcribed line by line |
 | `test/proof/XMSSEquivalence.t.sol` | the Halmos proofs, and the specification checked against the reference vectors |
-| `test/XMSS.t.sol`, `test/XMSSProperties.t.sol` | unit, gas and fuzz tests |
-| `test/vectors/` | signatures from the independent Python implementation, h = 4, 10 and 20 |
+| `test/proof/RFC8391MT.sol`, `test/proof/XMSSMTEquivalence.t.sol`, `test/proof/XMSSMT.md` | the same for XMSS^MT: specification, Halmos proofs, write-up |
+| `test/XMSS.t.sol`, `test/XMSSProperties.t.sol`, `test/XMSSMT.t.sol` | unit, gas and fuzz tests |
+| `test/vectors/` | signatures from the independent Python implementations: XMSS at h = 4, 10 and 20, XMSS^MT at (h, d) = (4, 2), (20, 2), (20, 4), (40, 8) and (60, 12) |
 | `py/xmss_ref.py` | independent Python implementation of RFC 8391 (key generation, signing, verification), written for this project; regenerates the h = 4 and 10 vectors |
 | `py/gen_h20.py` | regenerates the h = 20 vectors (about 10 minutes on all cores) |
+| `py/xmssmt_ref.py` | independent Python implementation of XMSS^MT, on top of `py/xmss_ref.py`; regenerates the XMSS^MT vectors |
 | `py/sign_digest.py` | test helper: signs a digest with a deterministic test key, for Foundry FFI |
+| `scripts/` | `check_proof_run.py` (rejects a truncated or vacuous proof run), `crosscheck_reference.sh` (checks every vector against the RFC authors' C implementation) |
+| `reference/` | application code that is not part of the library; [see below](#reference-implementation-key-registry-pre-approval-engine-eip-drafts) |
 
 ## Test and prove
 
 ```sh
 forge test
 halmos --match-contract XMSSEquivalence --loop 70 --solver-timeout-assertion 0
+halmos --match-contract XMSSMTEquivalence --loop 70 --solver-timeout-assertion 0
+scripts/crosscheck_reference.sh   # needs gcc and OpenSSL headers
 ```
 
 Halmos 0.3.3 needs a one-line fix to its SHA-256 model first; see [PROOF.md](PROOF.md#assumptions-and-trust-base) and the CI workflow.
 
 ## Status and security
 
-**v1.0.0 is a stable release: `XMSS.verify`, `PublicKey`, `Signature` and the constants will not change incompatibly in 1.x.** The verifier is formally verified against RFC 8391 but **not audited**. Signing and key generation must happen off-chain, in hardware that never reuses a leaf. Report security issues privately to the maintainers rather than in a public issue.
+**`XMSS.verify`, `PublicKey`, `Signature` and the constants are stable since v1.0.0, and `XMSSMT.verify`, `verifyEncoded`, `validParams`, `Signature`, `Layer` and `MAX_TOTAL_HEIGHT` since v1.1.0: none will change incompatibly in 1.x.** The internal building blocks of both libraries are not part of that promise. The verifiers are formally verified against RFC 8391 but **not audited**. Signing and key generation must happen off-chain, in hardware that never reuses a leaf (an index, for XMSS^MT). Report security issues privately to the maintainers rather than in a public issue.
+
+## Reference implementation: key registry, pre-approval engine, EIP drafts
+
+[`reference/`](reference/README.md) holds application code that is **not part of the library**: a Safe-based XMSS key registry and hybrid ECDSA + XMSS pre-approval engine, a deployable `IXmssVerifier` contract, their specifications and the registry's Halmos proof, and three ERC drafts (XMSS verification, hash-based key registry, hybrid pre-approvals). It moved here from [FermionWallet](https://github.com/skalenetwork/fermionwallet) and is kept as the reference implementation of those drafts; it is **not audited** and has **no stable API**.
+
+It needs OpenZeppelin Contracts and the Safe smart account, which are deliberately not submodules: `forge install skalenetwork/xmss-solidity` and `git clone --recursive` fetch only forge-std, and nothing in `src/` imports anything. A script fetches the two at pinned commits into `reference/lib/` (gitignored), and a separate Foundry profile builds `reference/`:
+
+```sh
+reference/scripts/setup-deps.sh
+FOUNDRY_PROFILE=reference forge test
+python3 reference/scripts/check_requirements.py
+python3 reference/scripts/describe_spec.py --check reference/test/registry-proof/DESCRIPTION.md
+python3 reference/eips/check_eips.py
+```
+
+Known issues, including an EIP-7702 delegation issue in the registry's administrator check, are listed in the [CHANGELOG](CHANGELOG.md).
+
+## Related
+
+- [mldsa-solidity](https://github.com/skalenetwork/mldsa-solidity): FIPS 204 ML-DSA verification in Solidity. ML-DSA is stateless, so no index needs recording, at the cost of more gas and larger keys; the [project page](https://skalenetwork.github.io/xmss-solidity/) compares the two.
+- [pq-verifier-interface](https://github.com/skalenetwork/pq-verifier-interface): one Solidity interface and algorithm-id registry for stateless post-quantum verifiers (ML-DSA, SLH-DSA, FN-DSA). XMSS and XMSS^MT are deliberately outside it: each signature spends a one-time key the caller must record, so they keep their own API.
 
 ## Licence
 

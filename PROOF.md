@@ -43,7 +43,7 @@ Accepting a signature under a height other than the key's would need a collision
 
 ## Proof run
 
-Halmos 0.3.3 (Z3), solc 0.8.37 via-IR, for release v1.0.0 (same verifier code as v0.1.0). All 11 checks pass; CI re-runs them on every push and rejects a run that is truncated, near-vacuous, or carries solver warnings (`scripts/check_proof_run.py`).
+Halmos 0.3.3 (Z3), solc 0.8.37 via-IR, recorded for release v1.0.0 (same verifier code as v0.1.0 and v1.1.0, which changed comments only). All 11 checks pass; CI re-runs them on every push and rejects a run that is truncated, near-vacuous, or carries solver warnings (`scripts/check_proof_run.py`).
 
 | Check | Paths | Time |
 |---|---|---|

@@ -8,3 +8,19 @@ optimizer = true
 optimizer_runs = 200
 via_ir = true
 fs_permissions = [{ access = "read", path = "./test/vectors" }]
+
+# reference/: the Safe-based key registry, pre-approval engine and XmssVerifier, kept as a
+# reference implementation (see reference/README.md). A separate profile, so the library's
+# own build, tests and proof never compile them: FOUNDRY_PROFILE=reference forge test
+[profile.reference]
+src = "reference/src"
+test = "reference/test"
+out = "out/reference"
+cache_path = "cache/reference"
+# OpenZeppelin and Safe live in reference/lib/, fetched by reference/scripts/setup-deps.sh;
+# remappings.txt (forge-std only) still applies.
+libs = ["lib", "reference/lib"]
+remappings = [
+    "@openzeppelin/contracts/=reference/lib/openzeppelin-contracts/contracts/",
+    "@safe-global/safe-contracts/contracts/=reference/lib/safe-smart-account/contracts/",
+]

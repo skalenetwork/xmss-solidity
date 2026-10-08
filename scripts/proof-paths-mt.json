@@ -1,11 +1,11 @@
 {
-  "check_mtChain": 303,
-  "check_mtRandHash": 8,
-  "check_mtLtree": 4,
-  "check_mtClimbStep": 20,
-  "check_mtHMsg": 2,
-  "check_mtIndexWalk": 74,
-  "check_mtPrefixLayout": 8,
-  "check_mtVerifyRejectsOutOfDomain": 147,
-  "check_mtRootFromSig_h2": 17
+  "check_mtChain": 11,
+  "check_mtRandHash": 4,
+  "check_mtLtree": 2,
+  "check_mtClimbStep": 8,
+  "check_mtHMsg": 1,
+  "check_mtIndexWalk": 31,
+  "check_mtPrefixLayout": 4,
+  "check_mtVerifyRejectsOutOfDomain": 73,
+  "check_mtRootFromSig_h2": 6
 }

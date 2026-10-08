@@ -64,6 +64,15 @@ The guard rejects a run that is truncated, near-vacuous (fewer paths than record
 model fix CI applies) and solc 0.8.37 all nine checks pass in about 14 minutes, nearly all of
 it the composition check.
 
+The path count Halmos prints is not fixed: a branching condition whose solver check times out
+(`--solver-timeout-branching`, 1 ms by default) keeps both branches, so a loaded machine
+reports more paths than a quiet one. Three runs of the same code gave, for `check_mtChain`,
+`check_mtClimbStep`, `check_mtIndexWalk` and `check_mtRootFromSig_h2`: 303, 20, 74, 17 (1 ms,
+20 solver threads on a loaded machine); 30, 18, 74, 16 (1 ms, 4 threads); 22, 16, 62, 13 (1 s
+branching timeout, close to exact pruning). Like `scripts/proof-paths.json`, the floors are
+about half the counts of the 1 s run, low enough for any correct run and high enough to catch
+a precondition that excludes nearly every input.
+
 ## Assumptions
 
 As for XMSS: SHA-256 is an uninterpreted function, so the proofs say nothing about SHA-256

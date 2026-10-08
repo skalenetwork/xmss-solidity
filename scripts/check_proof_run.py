@@ -8,7 +8,12 @@
    passes on nothing. Halmos prints how many paths it explored; each check must
    reach at least the floor recorded from a known-good run (proof-paths.json).
 
-Usage: check_proof_run.py <loop-bound> <halmos-output-file>
+Usage: check_proof_run.py <loop-bound> <halmos-output-file> [<proof-file> <path-floors.json>]
+
+The optional pair names the proof contract and its floors, relative to the
+repository root; the defaults are the XMSS proof (test/proof/XMSSEquivalence.t.sol,
+scripts/proof-paths.json). The XMSS^MT proof is checked with
+test/proof/XMSSMTEquivalence.t.sol and scripts/proof-paths-mt.json.
 """
 import json
 import os
@@ -18,6 +23,8 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 loop_bound = int(sys.argv[1])
 out = open(sys.argv[2]).read()
+proof_file = sys.argv[3] if len(sys.argv) > 3 else "test/proof/XMSSEquivalence.t.sol"
+floors_file = sys.argv[4] if len(sys.argv) > 4 else "scripts/proof-paths.json"
 out = re.sub(r"\x1b\[[0-9;]*m", "", out)
 
 src = open(os.path.join(HERE, "..", "src", "XMSS.sol")).read()
@@ -36,11 +43,11 @@ if f"solc {pinned}" not in proof_md:
 # Under an uninterpreted hash, an inequality between hash outputs is unprovable (the
 # solver may assume collisions). Lemmas must be equalities or rejections of inputs
 # that never reach a hash; an assertNotEq on bytes32 in the proof file is a mistake.
-proof_src = open(os.path.join(HERE, "..", "test", "proof", "XMSSEquivalence.t.sol")).read()
+proof_src = open(os.path.join(HERE, "..", proof_file)).read()
 if re.search(r"assertNotEq\s*\(", proof_src):
-    sys.exit("XMSSEquivalence.t.sol uses assertNotEq: hash-output inequalities cannot be proven under the SHA-256 abstraction")
+    sys.exit(f"{proof_file} uses assertNotEq: hash-output inequalities cannot be proven under the SHA-256 abstraction")
 
-floors = json.load(open(os.path.join(HERE, "proof-paths.json")))
+floors = json.load(open(os.path.join(HERE, "..", floors_file)))
 seen = {}
 for m in re.finditer(r"\[(PASS|FAIL|ERROR|TIMEOUT)\] (check_\w+)\(.*?\(paths: (\d+),", out):
     seen[m.group(2)] = (m.group(1), int(m.group(3)))
@@ -63,7 +70,7 @@ for name, floor in floors.items():
         failed.append(f"{name}: explored {paths} paths, floor is {floor} (a precondition may now exclude most inputs)")
 for name in seen:
     if name not in floors:
-        failed.append(f"{name}: no path floor recorded in proof-paths.json; add one from a known-good run")
+        failed.append(f"{name}: no path floor recorded in {floors_file}; add one from a known-good run")
 if failed:
     sys.exit("proof run rejected:\n  " + "\n  ".join(failed))
 print(f"proof run ok: --loop {loop_bound} > LEN {LEN}; {len(floors)} checks passed at or above their path floors")

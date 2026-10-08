@@ -42,3 +42,8 @@ jobs:
         run: halmos --match-contract XMSSEquivalence --loop 70 --solver-timeout-assertion 0 2>&1 | tee halmos.log
       - name: Reject a truncated or vacuous proof run
         run: python3 scripts/check_proof_run.py 70 halmos.log
+      - name: Prove src/XMSSMT.sol equivalent to RFC 8391 section 4.2
+        # Same bound: XMSSMT.ltree loops over the 67 WOTS+ public-key nodes.
+        run: halmos --match-contract XMSSMTEquivalence --loop 70 --solver-timeout-assertion 0 2>&1 | tee halmos-mt.log
+      - name: Reject a truncated or vacuous XMSS^MT proof run
+        run: python3 scripts/check_proof_run.py 70 halmos-mt.log test/proof/XMSSMTEquivalence.t.sol scripts/proof-paths-mt.json

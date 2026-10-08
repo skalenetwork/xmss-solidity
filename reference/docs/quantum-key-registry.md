@@ -1,0 +1,210 @@
+# Quantum Key Registry
+
+> **Moved here from FermionWallet.** This specification, the registry it describes
+> (`reference/src/QuantumKeyRegistry.sol`) and its formal proof (`reference/test/registry-proof/`) moved
+> to this repository from
+> [FermionWallet](https://github.com/skalenetwork/fermionwallet), which replaced XMSS with
+> hybrid ECDSA + ML-DSA in v2. The XMSS stack is maintained here as a reference
+> implementation. The text is otherwise as it was written for FermionGuard: the Guard, the
+> add-on service, the Ledger app and the Guard-level tests it names (for example
+> `FermionGuard.t.sol`, `GuardIntegration.t.sol`) are FermionWallet's and stay in that
+> repository, last as described here at [b03aa8f](https://github.com/skalenetwork/fermionwallet/tree/b03aa8f0d342e588a67aba20d137c7ef0d4579c8).
+
+## Programming language
+
+- Solidity for the on-chain registry implementation
+- JavaScript for the read-only backend cache/indexer
+
+## Open-source libraries / tooling used
+
+- OpenZeppelin Contracts (non-upgradeable): `EIP712`, `Nonces`, `BitMaps`, `SignatureChecker`, `SafeCast`
+- The registry is `reference/src/QuantumKeyRegistry.sol`, an abstract base compiled into the one deployed `FermionGuard` contract (one address, one storage)
+- ethers.js or viem for contract interaction
+- Node.js crypto APIs for hashing and validation
+
+## Role in the FermionGuard MVP
+
+The quantum key registry stores the metadata and state of registered quantum keys used for second authorization.
+
+The primary registered key is the **Quantum Administrator's permanent XMSS root** (RFC 8391 / NIST SP 800-208): one long-lived public root hash covering up to 2^h pre-approval signatures, with per-leaf-index usage tracked on-chain to prevent the catastrophic reuse of a one-time WOTS+ leaf.
+
+## Responsibilities
+
+- stores public key metadata
+- stores key usage status
+- tracks active, rotated, and revoked keys
+- [QKR-001] enforces the **co-signed one-shot registration** lifecycle described below: activation requires owner-threshold signatures over the root itself plus the Administrator's hardware attestation, in a single transaction
+- [QKR-002] binds a quantum key to one Safe (the key covers all assets; there is no per-token binding)
+- supports registration and rotation
+
+## Key activation lifecycle (co-signed one-shot registration)
+
+A key becomes **the quantum approval key** for a Safe in a single on-chain transaction, jointly authorized off-chain:
+
+1. **Generate.** The Quantum Administrator generates the XMSS key with Ledger (see the key ceremony in [fermionguard-add-on-service.md](https://github.com/skalenetwork/fermionwallet/blob/b03aa8f0d342e588a67aba20d137c7ef0d4579c8/fermionguard-add-on-service.md)); only the public root leaves the hardware boundary, attested by a Ledger-signed EIP-712 `QuantumKeyAttestation`. [QKR-003]
+2. **Owners co-sign the root itself, off-chain.** Each Safe owner clear-signs EIP-712 `ApproveQuantumKey { safe, quantumAdmin, xmssRoot, xmssSeed, treeHeight, parameterSet, registryNonce, validUntil }` on their own hardware wallet (the public `xmssSeed` is a mandatory RFC 8391 verification input and is registered alongside the root). No opaque key IDs are ever signed — a compromised frontend cannot substitute a root (or swap in an attacker's Administrator address) without invalidating every signature. [QKR-004]
+3. **Activate.** The Administrator submits `registerQuantumKey(safe, quantumAdmin, root, xmssSeed, treeHeight, parameterSet, validUntil, ledgerAttestation, ownerSigs)` — `quantumAdmin` is the Administrator's Ledger EOA, stored as the classical verifier address for every hybrid pre-approval. The contract verifies the owner threshold via the Safe's legacy `checkSignatures(bytes32 dataHash, bytes data, bytes signatures)` entry point (with the EIP-712 message itself as `data` — see below), verifies the attestation is signed by `quantumAdmin`, consumes the Safe's `registryNonce`, and sets the key **`Active`**. [QKR-005] Registration is refused if the Safe already has an Active key (`SafeAlreadyEnrolled` — a replacement key goes through rotation), if this Safe registered the same root before (`RootAlreadyRegistered`), if `validUntil` has passed, or if the Safe has a fallback handler or unguarded enabled modules (the Guard's enrollment posture check). [QKR-006] The Guard initialises the Safe's selector permit-list to `{transfer}` only at the Safe's **first** registration; registering a new key after an emergency revocation keeps the permit-list the owners have governed into place. [QKR-007]
+
+Rules:
+- [QKR-008] **at most one `Active` key per Safe** at any time — never two. A Safe has zero before its first registration and again between an executed revocation and the fresh registration that follows (step 4 of the emergency path); every other moment it has exactly one, and the rotation switch is atomic
+- [QKR-009] XMSS root uniqueness is scoped **per Safe**: registering a root on another Safe is allowed (the device attests one key per Safe), but reusing the same root for the same Safe rejects
+- [QKR-009a] **leaf accounting is global per key, not per registration**: the used-leaf bitmap is keyed by the XMSS root, so a leaf spent under one Safe is spent under every Safe holding the same key. Keying it per registration would give each Safe a fresh bitmap for one physical key, and one one-time leaf could then sign two different digests — the condition that makes WOTS+ forgeable
+- [QKR-010] owner signatures are bound to the Guard contract (EIP-712 verifying contract), chain, Safe, `registryNonce`, and `validUntil` — stale or aborted ceremonies are provably unusable once the nonce advances
+- [QKR-011] new pre-approvals can only be created with the Safe's `Active` key; approvals already created under a key that was later `Rotated` stay executable, while a `Revoked` key's approvals do not
+- [QKR-012] rotation follows the same one-shot path, additionally requiring the old-key XMSS signature proof per the Guard's `rotateQuantumKey` rules
+
+The Administrator cannot act alone: activating a key always needs an owner-threshold set of signatures over the root. The owners, however, *can* act alone, and the contract does not stop them. `registerQuantumKey` checks the attestation against the `quantumAdmin` address the owner signatures themselves name, so an owner threshold that names an address it controls supplies both proofs — no incumbent Administrator device is involved. This is a deliberate accepted risk, not an oversight: it is what lets honest owners recover after the Administrator's device is lost, and it is why registration after an emergency revocation is classically protected only. See [threat-model.md §2.1](https://github.com/skalenetwork/fermionwallet/blob/b03aa8f0d342e588a67aba20d137c7ef0d4579c8/threat-model.md#21-quantum-capable-attacker-the-headline-adversary) and `test_TM_ResidualRisk_PostRevocationRegistrationIsClassicalOnly`. [QKR-013]
+
+### Owner-signature compatibility
+
+The registry uses Safe's legacy `checkSignatures(bytes32 dataHash, bytes data, bytes signatures)` form because it exists on Safe 1.3.0, 1.4.1, and 1.5.0. The v1.5-only overload must not be used for registration or rotation. [QKR-014] Its selector is absent on older Safes, which either makes onboarding revert through the default fallback handler or, with no handler, can silently skip owner verification. The legacy form's `msg.sender`-as-executor caveat is harmless here because `msg.sender` is the registry contract, never a Safe owner.
+
+Owner signatures are checked with the EIP-712 message as `data`: `dataHash` is the registry digest and `data` is its exact preimage, `0x1901 ‖ domainSeparator ‖ structHash`. [QKR-015] This is what lets contract owners (a nested Safe, a smart-contract wallet) co-sign on Safe 1.3.0 and 1.4.1, which pass `data` — not the hash — to the owner's legacy `isValidSignature(bytes data, bytes signature)`; Safe 1.4.1 additionally requires `keccak256(data) == dataHash` for contract signatures (`GS027`). Safe 1.5.0 ignores `data` and asks contract owners `isValidSignature(bytes32 digest, bytes signature)`. A contract owner therefore approves the preimage (legacy) or the digest (1.5.0) of the same message; EOA owners sign the digest in every version.
+
+## Key rotation procedure (Quantum Administrator)
+
+Rotation is the same one-shot co-signed path as registration, plus **proof of possession of the old key**. It is the way forward **as** exhaustion approaches and the standard response to device replacement. Rotate before the last leaf is spent: the possession proof consumes one leaf of the old key, so a key with every leaf already used cannot be rotated at all (`_verifyAndConsumeXmss` reverts `LeafAlreadyUsed` for any index) and only the emergency revocation path below remains.
+
+### When to rotate
+
+| Trigger | Urgency |
+|---|---|
+| Leaf usage ≥ 80% (device shows amber bar) | Schedule within the quarter |
+| Leaf usage ≥ 95% ("Rotation overdue" interstitial) | Rotate now — at 100% the app refuses to sign |
+| Planned device replacement / Administrator handover | Before decommissioning the old device |
+| Suspected key or device compromise | **Do not use this procedure** — revoke first, then use the emergency path below |
+
+### Routine rotation — step by step
+
+1. **Settle the queue.** Pre-approvals already created on-chain were fully verified at creation and **remain valid** under the old key until consumed, expired, or revoked — rotation only stops *new* creations. Still, drain or revoke anything pending to keep the audit trail clean.
+2. **Generate the new key.** On the same Ledger — the app holds up to four keys, so `GEN_XMSS_KEY` puts the new key in a free slot and keeps the old one — or on a new Ledger for a device replacement or handover. Record the new ceremony code (6 BIP-39 words). The device holding the new key clear-signs the EIP-712 `QuantumKeyAttestation` for it (`SIGN_KEY_ATTESTATION`, `ledgerAttestation`).
+3. **Prove possession of the old key.** With the **old** key's slot — on the same device, or on the old device — run the rotation flow (`SIGN_ROTATION`): the screen shows the red **ROTATE QUANTUM KEY** header, old-root vs new-root ceremony words, and the abandoned-leaf count. Physical confirmation releases an XMSS signature by the old key over `RotateQuantumKey { safe, oldQuantumKeyId, newQuantumAdmin, newXmssRoot, newXmssSeed, treeHeight, parameterSet, registryNonce, validUntil }` — consuming one final leaf of the old key (`oldKeyXmssProof`). [QKR-016]
+4. **Collect owner co-signatures.** Each Safe owner clear-signs the same `RotateQuantumKey` struct on their own hardware wallet, verifying the **new** root's ceremony words against the Administrator's out-of-band readout — same threshold and same anti-substitution property as registration.
+5. **Submit.** The Administrator (via the relayer) calls `rotateQuantumKey(safe, newQuantumAdmin, newXmssRoot, newXmssSeed, treeHeight, parameterSet, validUntil, oldKeyXmssProof, ledgerAttestation, ownerSignatures)`. Atomically: old key → `Rotated`, new key → `Active`, `registryNonce` consumed, and any pending key revocation cancelled. Missing any of the three proofs (old-key XMSS, new-key attestation, owner threshold) reverts. [QKR-017]
+6. **Verify and retire.** Create and execute one dust-value pre-approval with the new key end-to-end. Only after it executes, retire the old key: *Settings → Retire key* on its slot (same device), or wipe the old device. Its unused leaves are dead either way — the registry accepts new pre-approvals only from the `Active` key.
+
+If the Administrator's address changes (`newQuantumAdmin ≠ quantumAdmin`), owners are co-signing the handover too — the struct binds the new address, so a frontend cannot swap Administrators covertly. [QKR-018]
+
+### Emergency rotation — old key unavailable (lost / destroyed / compromised device)
+
+The old-key possession proof is impossible, so the path is Safe governance with a time lock:
+
+1. **If compromise is suspected:** any owner immediately calls `pauseSafe(safe)` (fail-closed — unless the post-unpause cooldown from a previous pause is still running, in which case pausing takes an owner-threshold Safe transaction) and `revokePreApproval` on pending transfer/payload approvals; pending ADMIN approvals are revoked by the Safe (owner threshold) or the Administrator. [QKR-019]
+2. The owner threshold signs EIP-712 `RequestKeyRevocation { safe, quantumKeyId, registryNonce, validUntil }` — no quantum signature is needed. Anyone submits `requestKeyRevocation(safe, validUntil, ownerSignatures)`, which records the exact `keyId` and starts `EMERGENCY_ROTATION_TIMELOCK` (set to the same value as the emergency de-guard timelock, e.g. 14 days). [QKR-020] The request consumes the registry nonce, so the signatures work exactly once and cannot be replayed to re-arm a cancelled request; this also invalidates any ceremony signatures in flight. [QKR-021] During the delay **only the Safe itself** can cancel (`cancelKeyRevocation`, an owner-threshold Safe transaction that no Safe or Guard state can block — it is an escape call, checked before the pause, the enrollment requirement and the nesting check; what does block it is the Guard's universal `gasPrice == 0` rule, which is checked first of all, so sign it with no refund like every other transaction under this Guard; and the escape path applies only to a direct `Call` to the Safe itself with zero value, so a cancel batched through `MultiSendCallOnly` is an ordinary transaction and faces every check) — the Administrator's key alone cannot, so a stolen Ledger cannot block the owners' remedy. [QKR-022] After the delay, anyone calls `executeKeyRevocation(safe)`. [QKR-023]
+3. At execution, the registry revokes only that recorded key — never the successor. An owner-co-signed rotation in the meantime **cancels** the pending revocation outright (the rotation itself resolves the compromise), so a later `executeKeyRevocation` reverts `RevocationNotRequested`. `RevocationSuperseded` backs that up: it fires if the recorded key is ever not the Safe's active key at execution time, which no current code path can reach, and it is kept as a belt-and-braces guard. [QKR-024]
+4. Once revoked, a **fresh registration** (not rotation) runs on a new device: full ceremony, owner co-signatures, new `registerQuantumKey` — the one-Active-key rule is satisfied because the old key is `Revoked`, not `Active`. [QKR-025]
+5. The time lock is the security boundary: a thief holding only the stolen Ledger cannot beat the owners to a quiet key swap, and owners alone cannot instantly bypass the quantum layer. The registration that follows is protected only by classical signatures (owner threshold plus the new Administrator's attestation). An adversary that can forge the owners' ECDSA keys can race it and register its own key the moment the revocation matures. See [threat-model.md §2.1](https://github.com/skalenetwork/fermionwallet/blob/b03aa8f0d342e588a67aba20d137c7ef0d4579c8/threat-model.md#21-quantum-capable-attacker-the-headline-adversary).
+
+### Invariants (all enforced on-chain)
+
+- [QKR-026] Exactly one `Active` key per Safe before and after; the switch is atomic — there is no window with zero or two active keys.
+- [QKR-027] Old-key pre-approvals created before rotation remain executable; the old key can create nothing new.
+- [QKR-028] `registryNonce` (OpenZeppelin `Nonces`) is consumed by every registration, rotation, revocation request and revocation, so every owner-signed registry message is single-use and any concurrently-running stale ceremony dies.
+- [QKR-029] A stale revocation request can never destroy the successor key; it is bound to the key that was active when requested.
+- [QKR-030] Rotation never touches Safe ownership, the Guard, or funds — it is key-layer only.
+
+The state machine these invariants describe is also written as executable code in
+[`reference/test/registry-proof/RegistrySpec.sol`](../test/registry-proof/RegistrySpec.sol),
+which `RegistryEquivalence.t.sol` proves `QuantumKeyRegistry` implements exactly.
+[`DESCRIPTION.md`](../test/registry-proof/DESCRIPTION.md) in that folder is
+that specification rendered back into English by `reference/scripts/describe_spec.py`;
+where it and this section disagree, the specification and the proof win. It is
+generated, so regenerate it whenever the specification changes.
+
+## Key states
+
+| Status | Meaning |
+|---|---|
+| `Active` | co-signed and registered; the one key the Guard verifies against |
+| `Rotated` | superseded by a newer registered key; kept for audit |
+| `Revoked` | emergency-disabled via `requestKeyRevocation` → timelock → `executeKeyRevocation`; its approvals stop working |
+
+(No on-chain `Proposed` state: the pending phase lives entirely in the off-chain ceremony session, keeping the contract state machine minimal and spam-free.)
+
+
+## Implementation requirement: on-chain only
+
+The registry **must be a smart contract**. [QKR-031] An earlier draft allowed a backend registry as an MVP option; that is withdrawn as a security contradiction: the used-leaf-index bitmap is consensus-critical (XMSS leaf reuse enables forgery), and the Guard can only enforce what it can read on-chain at execution time. A backend that "verifies through the Guard" would make the Guard trust off-chain state — exactly the oracle-of-approval anti-pattern the spec forbids.
+
+The backend may keep a **read-only cache/index** of registry state for UI and notifications. On any divergence, the chain wins; the service must resync from chain before releasing any signature. [QKR-032]
+
+## Key metadata stored
+
+`KeyRegistration` (see the Guard spec's ABI):
+
+- quantumKeyId (`keccak256(abi.encodePacked(safe, xmssRoot, registryNonce))`)
+- safe
+- quantumAdmin (the Ledger EOA that the ECDSA half is verified against)
+- xmssRoot and xmssSeed (the XMSS public key)
+- treeHeight (1..20) and parameterSet [QKR-033]. The registry always verifies with the **four-argument** `XMSS.verify(digest, sig, PublicKey, treeHeight)`, passing the height stored for the key, so a signature carrying any other number of authentication nodes is rejected rather than verified at a height the signer chose. A signature carrying any other number of authentication nodes is rejected — that much a test can demonstrate, and one does. [QKR-034] The stronger rule, that the three-argument form (which takes the height from the signature itself) is never used here, **cannot** be demonstrated by any test: the registry's own `authPath.length != treeHeight` check reverts first, so the contract behaves identically either way, and switching forms would still compile and still pass every test in this repository. It is enforced instead by a grep over `QuantumKeyRegistry.sol` in `.github/workflows/ci.yml`, run on every push. [QKR-034a]
+- status
+- createdAt, rotatedAt
+- useCounter
+
+Alongside: the used-leaf bitmap per key (`isLeafUsed`), the Safe's Active key (`safeToQuantumKey`), the sticky `enrolledSafe` flag, `registryNonce`, per-Safe `rootRegistered`, and the pending revocation (`keyRevocationExecutableAt`, `keyRevocationKeyId`).
+
+## Design intent
+
+The registry is required so that the Safe Guard can verify a quantum signature against a known and trusted key state before allowing the transaction to proceed.
+
+## Open issues
+
+Recorded when the registry moved to this repository; not fixed.
+
+- **An EIP-7702 delegation of the Administrator's EOA changes how its signatures are checked.**
+  The attestation in `registerQuantumKey` and `rotateQuantumKey`, and the classical half of
+  every pre-approval in `PreApprovalEngine._create`, are checked with OpenZeppelin's
+  `SignatureChecker.isValidSignatureNow`, which chooses ECDSA or ERC-1271 from
+  `quantumAdmin.code.length` *at call time*. If the Ledger EOA registered as `quantumAdmin` is
+  later delegated under EIP-7702, it acquires code, and every subsequent check silently becomes
+  an ERC-1271 call to the delegate: a delegate without `isValidSignature` refuses the device's
+  genuine signatures, and a permissive one accepts whatever it chooses in place of the classical
+  half. FermionWallet fixed the same issue in its own wallet contract as FWL-017a, by fixing the
+  branch (ECDSA for an EOA, ERC-1271 for a contract) when the key is registered; the registry
+  stores no such flag.
+
+## Requirement index
+
+Every normative requirement in this document carries a stable `[QKR-nnn]` tag.
+`reference/scripts/check_requirements.py` cross-references these tags with the
+`Covers:` annotations on the tests, fuzz properties and proofs under
+`reference/test/`, and reports the requirements that no check discharges yet.
+
+| ID | Requirement |
+|---|---|
+| QKR-001 | Activation is one transaction carrying owner-threshold signatures over the root plus the Administrator's hardware attestation. |
+| QKR-002 | A quantum key is bound to exactly one Safe and covers all its assets. |
+| QKR-003 | Only the public root leaves the hardware boundary, attested by a Ledger-signed `QuantumKeyAttestation`. |
+| QKR-004 | Owners sign the root itself, never an opaque key ID, so a substituted root or Administrator invalidates every signature. |
+| QKR-005 | Registration verifies the owner threshold and the attestation, consumes `registryNonce`, and sets the key Active. |
+| QKR-006 | Registration is refused for an existing Active key, a root this Safe used before, an elapsed `validUntil`, or a bad Safe posture. |
+| QKR-007 | The selector permit-list is initialised to `{transfer}` at the Safe's first registration only. |
+| QKR-008 | At most one Active key per Safe at any time; zero before the first registration and between an executed revocation and the next registration. |
+| QKR-009 | Root uniqueness is per Safe: cross-Safe registration is allowed, same-Safe reuse rejects. |
+| QKR-009a | Leaf accounting is global per key: a leaf spent under one Safe is spent under every Safe holding that key. |
+| QKR-010 | Owner signatures are bound to the Guard contract, chain, Safe, `registryNonce` and `validUntil`. |
+| QKR-011 | Only the Active key creates new pre-approvals; a Rotated key's approvals stay executable, a Revoked key's do not. |
+| QKR-012 | Rotation is the registration path plus an old-key XMSS possession proof. |
+| QKR-013 | The Administrator cannot activate a key alone; the owner threshold can, because it names the attesting `quantumAdmin` (accepted risk, threat-model.md §2.1). |
+| QKR-014 | Owner signatures use Safe's legacy `checkSignatures(bytes32,bytes,bytes)`; the v1.5-only overload must not be used. |
+| QKR-015 | Owner signatures are checked with the EIP-712 message preimage as `data` and the digest as `dataHash`. |
+| QKR-016 | The rotation proof is an XMSS signature by the old key over `RotateQuantumKey`, consuming one final old-key leaf. |
+| QKR-017 | Rotation is atomic (old → Rotated, new → Active, nonce consumed, pending revocation cancelled); a missing proof reverts. |
+| QKR-018 | A change of Administrator address is bound into the struct the owners co-sign. |
+| QKR-019 | Pending ADMIN approvals are revocable only by the Safe (owner threshold) or the Administrator. |
+| QKR-020 | `requestKeyRevocation` records the exact key ID and starts `EMERGENCY_ROTATION_TIMELOCK`. |
+| QKR-021 | The revocation request consumes the registry nonce, so its owner signatures work exactly once. |
+| QKR-022 | During the delay only the Safe itself can cancel a revocation; the Administrator's key alone cannot. |
+| QKR-023 | After the delay anyone may call `executeKeyRevocation`. |
+| QKR-024 | Execution revokes only the recorded key; a rotation cancels the request (so execution then reverts `RevocationNotRequested`), and `RevocationSuperseded` is the belt-and-braces guard if the recorded key is ever not the active one. |
+| QKR-025 | After a revocation the successor key comes from a fresh registration, not a rotation. |
+| QKR-026 | The rotation switch is atomic: never a window with zero or two Active keys. |
+| QKR-027 | Pre-approvals created before rotation remain executable; the old key creates nothing new. |
+| QKR-028 | `registryNonce` is consumed by every registration, rotation, revocation request and revocation. |
+| QKR-029 | A stale revocation request can never destroy the successor key. |
+| QKR-030 | Rotation never touches Safe ownership, the Guard, or funds. |
+| QKR-031 | The registry must be a smart contract; no backend registry is acceptable. |
+| QKR-032 | On divergence the chain wins; the service resyncs from chain before releasing any signature. |
+| QKR-033 | A registered key's `treeHeight` is within 1..20. |
+| QKR-034 | A signature whose authentication path is not the key's registered `treeHeight` long is rejected. |
+| QKR-034a | Verification calls the four-argument `XMSS.verify`, never the three-argument form. Not testable — enforced by a CI grep, since both forms behave identically behind QKR-034's check. |

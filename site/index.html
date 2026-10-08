@@ -185,8 +185,8 @@
       <div>
         <p>
           A large enough quantum computer breaks ECDSA, and with it every Ethereum account, multisig and bridge key.
-          The replacements standardized so far are lattice schemes, which cost tens of millions of gas to verify —
-          or hash-based schemes, which the EVM can check directly.
+          The replacements standardized so far are lattice schemes, which take millions of gas to verify in
+          Solidity, and hash-based schemes, which the EVM can check for well under a million.
         </p>
         <p>
           XMSS is hash-based. Its security rests on SHA-256 alone: no new assumptions, no pairings, no trusted setup,
@@ -336,9 +336,12 @@ xmss-solidity/=lib/xmss-solidity/src/</code></pre>
     </details>
     <details>
       <summary>Why XMSS and not ML-DSA or Falcon?</summary>
-      <p>Lattice verification costs tens of millions of gas on the EVM today. XMSS verification is pure hashing,
-        so it runs in about 0.7M gas with the SHA-256 precompile that already exists. The trade-off is that XMSS is
-        stateful: each key signs a fixed number of times, and each leaf exactly once.</p>
+      <p>Cost and assumptions. XMSS verification is pure hashing, so it runs in about 0.7M gas with the SHA-256
+        precompile that already exists, and its security rests on SHA-256 alone. ML-DSA, the lattice standard, costs
+        about 2.7M gas in Solidity even with per-key precomputation (see the sister library
+        <a href="https://skalenetwork.github.io/mldsa-solidity/">mldsa-solidity</a>). The trade-off is that XMSS is
+        stateful: each key signs a fixed number of times, and each leaf exactly once. If your signer cannot keep that
+        state safely, use ML-DSA.</p>
     </details>
     <details>
       <summary>Is one key enough for production use?</summary>
@@ -363,6 +366,7 @@ xmss-solidity/=lib/xmss-solidity/src/</code></pre>
       <a href="https://github.com/skalenetwork/xmss-solidity/blob/main/PROOF.md">PROOF.md</a>
       <a href="https://www.rfc-editor.org/rfc/rfc8391">RFC 8391</a>
       <a href="https://csrc.nist.gov/pubs/sp/800/208/final">NIST SP 800-208</a>
+      <a href="https://skalenetwork.github.io/mldsa-solidity/">mldsa-solidity (ML-DSA)</a>
     </div>
     <p style="margin:0">MIT licensed · formally verified against RFC 8391 · not audited — do not secure real funds without your own review.</p>
   </div>
